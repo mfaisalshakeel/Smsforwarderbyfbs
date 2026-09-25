@@ -1,0 +1,71 @@
+<resources>
+    <string name="app_name">ایس ایم ایس فارورڈر</string>
+
+    <!-- Navigation -->
+    <string name="nav_dashboard">ہوم</string>
+    <string name="nav_rules">قواعد</string>
+    <string name="nav_logs">تاریخ</string>
+    <string name="nav_settings">سیٹ اپ</string>
+    <string name="nav_simulator">ٹیسٹ</string>
+
+    <!-- Titles -->
+    <string name="title_dashboard">ایس ایم ایس فارورڈر</string>
+    <string name="title_rules">فارورڈنگ قواعد</string>
+    <string name="title_logs">فارورڈنگ کی تاریخ</string>
+    <string name="title_settings">سیٹ اپ</string>
+    <string name="title_simulator">اپنا سیٹ اپ جانچیں</string>
+
+    <!-- Notification channels -->
+    <string name="channel_service_name">فارورڈنگ سروس</string>
+    <string name="channel_service_desc">پیغامات کی فارورڈنگ کو پس منظر میں چلاتی رہتی ہے۔</string>
+    <string name="channel_alerts_name">فارورڈنگ الرٹس</string>
+    <string name="channel_alerts_desc">جب کوئی پیغام فارورڈ ہو تو آپ کو بتاتا ہے۔</string>
+
+    <!-- Foreground service -->
+    <string name="service_notification_title">ایس ایم ایس فارورڈر چل رہا ہے</string>
+    <string name="service_status_starting">شروع ہو رہا ہے…</string>
+    <string name="service_status_active">پیغامات کی نگرانی جاری ہے</string>
+    <string name="service_status_paused">فارورڈنگ روکی ہوئی ہے</string>
+    <string name="service_status_no_account">فارورڈنگ شروع کرنے کے لیے ای میل اکاؤنٹ جوڑیں</string>
+
+    <!-- Alerts -->
+    <string name="notify_forwarded_title">فارورڈ ہو گیا: %1$s</string>
+    <string name="notify_problem_title">فارورڈ نہیں ہو سکا: %1$s</string>
+
+    <!-- Status -->
+    <string name="status_active">فارورڈنگ فعال ہے</string>
+    <string name="status_paused">فارورڈنگ روکی ہوئی ہے</string>
+    <string name="status_setup_needed">سیٹ اپ درکار ہے</string>
+
+    <!-- Stats -->
+    <string name="stats_total">موصول</string>
+    <string name="stats_success">فارورڈ شدہ</string>
+    <string name="stats_failed">ناکام</string>
+    <string name="stats_queued">قطار میں</string>
+    <string name="stats_rules">فعال قواعد</string>
+
+    <!-- Permissions -->
+    <string name="perm_sms_receive_title">آنے والے ایس ایم ایس پڑھیں</string>
+    <string name="perm_sms_receive_desc">پیغامات آتے ہی دیکھنے کے لیے ضروری ہے۔</string>
+    <string name="perm_sms_send_title">ایس ایم ایس بھیجیں</string>
+    <string name="perm_sms_send_desc">صرف اُن قواعد کے لیے جو کسی دوسرے نمبر پر فارورڈ کرتے ہیں۔</string>
+    <string name="perm_notifications_title">اطلاعات دکھائیں</string>
+    <string name="perm_notifications_desc">پیغام فارورڈ ہونے پر ایپ آپ کو بتا سکے۔</string>
+    <string name="perm_phone_state_title">فون کی حالت پڑھیں</string>
+    <string name="perm_phone_state_desc">یہ جاننے کے لیے کہ پیغام کس سم پر آیا۔</string>
+    <string name="perm_notification_access_title">اطلاعات تک رسائی</string>
+    <string name="perm_notification_access_desc">دوسری ایپس کی اطلاعات فارورڈ کرنے کے لیے ضروری ہے۔</string>
+    <string name="perm_battery_title">بیٹری کی پابندی ہٹائیں</string>
+    <string name="perm_battery_desc">اینڈرائیڈ ایپ کو روک کر پیغامات ضائع نہ کرے۔</string>
+
+    <!-- Common actions -->
+    <string name="action_grant">اجازت دیں</string>
+    <string name="action_open_settings">سیٹنگز کھولیں</string>
+    <string name="action_retry">دوبارہ کوشش کریں</string>
+    <string name="action_delete">حذف کریں</string>
+    <string name="action_cancel">منسوخ</string>
+    <string name="action_save">محفوظ کریں</string>
+    <string name="action_next">آگے</string>
+    <string name="action_back">پیچھے</string>
+    <string name="action_done">مکمل</string>
+</resources>

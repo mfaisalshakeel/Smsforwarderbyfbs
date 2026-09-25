@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,11 +10,19 @@ import com.example.data.local.entity.ForwardingRuleEntity
 import com.example.data.local.entity.SmsLogEntity
 import com.example.data.preferences.ForwarderSettings
 import com.example.forwarder.ForwardResult
+import com.example.forwarder.GoogleAuthRecovery
+import com.example.service.ForwarderForegroundService
+import com.example.util.BackupManager
+import com.example.util.PowerHelper
+import com.example.util.SimHelper
+import com.example.util.SimInfo
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -22,16 +31,32 @@ data class PermissionState(
     val hasSendSms: Boolean = false,
     val hasNotificationPost: Boolean = false,
     val hasNotificationAccess: Boolean = false,
-    val hasReadPhoneState: Boolean = false
-)
+    val hasReadPhoneState: Boolean = false,
+    val isBatteryOptimised: Boolean = true
+) {
+    /** The minimum needed for SMS forwarding to work at all. */
+    val isCoreReady: Boolean get() = hasReceiveSms
+
+    val outstandingCount: Int
+        get() = listOf(
+            hasReceiveSms,
+            hasNotificationPost,
+            !isBatteryOptimised
+        ).count { !it }
+}
 
 data class DashboardStats(
     val totalCount: Int = 0,
     val successCount: Int = 0,
     val failedCount: Int = 0,
+    val pendingCount: Int = 0,
     val activeRulesCount: Int = 0
 )
 
+/** A transient message shown in a snackbar. */
+data class UiMessage(val text: String, val isError: Boolean = false)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as SmsForwarderApplication
@@ -40,77 +65,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsRepo = app.settingsRepository
     private val forwardingManager = app.forwardingManager
 
-    // Settings
     val settingsState: StateFlow<ForwarderSettings> = settingsRepo.settingsFlow
 
-    // Forwarding Rules
     val rulesState: StateFlow<List<ForwardingRuleEntity>> = ruleRepo.allRules
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val activeRulesCount: StateFlow<Int> = ruleRepo.activeRulesCount
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
-    // Logs
     val recentLogs: StateFlow<List<SmsLogEntity>> = smsLogRepo.recentLogs
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    // ---- Log filtering ------------------------------------------------------
     val searchQuery = MutableStateFlow("")
-    val filterStatus = MutableStateFlow("ALL")
-    val filterDestination = MutableStateFlow("ALL")
-    val filterSource = MutableStateFlow("ALL") // "ALL", "SMS", "NOTIFICATION"
+    val filterStatus = MutableStateFlow(FILTER_ALL)
+    val filterSource = MutableStateFlow(FILTER_ALL)
 
-    val logsState: StateFlow<List<SmsLogEntity>> = combine(
-        smsLogRepo.allLogs,
-        searchQuery,
-        filterStatus,
-        filterDestination
-    ) { logs, query, status, dest ->
-        logs.filter { log ->
-            val matchQuery = query.isBlank() ||
-                log.sender.contains(query, ignoreCase = true) ||
-                log.body.contains(query, ignoreCase = true) ||
-                log.destinationTarget.contains(query, ignoreCase = true) ||
-                (log.ruleName ?: "").contains(query, ignoreCase = true)
+    /**
+     * Filtering happens in SQL. The previous implementation streamed every row into memory and
+     * filtered in Kotlin, which janked once the history grew.
+     */
+    val logsState: StateFlow<List<SmsLogEntity>> =
+        combine(searchQuery, filterStatus, filterSource) { query, status, source ->
+            Triple(query, status, source)
+        }.flatMapLatest { (query, status, source) ->
+            smsLogRepo.getFilteredLogs(query = query.trim(), status = status, source = source)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-            val matchStatus = status == "ALL" || log.status.equals(status, ignoreCase = true)
-            val matchDest = dest == "ALL" ||
-                log.destinationType.equals(dest, ignoreCase = true) ||
-                log.source.equals(dest, ignoreCase = true)
+    val statsState: StateFlow<DashboardStats> = combine(
+        smsLogRepo.totalCount,
+        smsLogRepo.successCount,
+        smsLogRepo.failedCount,
+        smsLogRepo.pendingCount,
+        ruleRepo.activeRulesCount
+    ) { total, success, failed, pending, activeRules ->
+        DashboardStats(total, success, failed, pending, activeRules)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardStats())
 
-            matchQuery && matchStatus && matchDest
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Permissions
+    // ---- Device / permission state -----------------------------------------
     private val _permissionsState = MutableStateFlow(PermissionState())
     val permissionsState: StateFlow<PermissionState> = _permissionsState.asStateFlow()
 
-    // Overall stats
-    val statsState: StateFlow<DashboardStats> = combine(
-        smsLogRepo.allLogs,
-        ruleRepo.activeRulesCount
-    ) { logs, activeRules ->
-        DashboardStats(
-            totalCount = logs.size,
-            successCount = logs.count { it.status == "SUCCESS" },
-            failedCount = logs.count { it.status == "FAILED" },
-            activeRulesCount = activeRules
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardStats())
+    private val _availableSims = MutableStateFlow<List<SimInfo>>(emptyList())
+    val availableSims: StateFlow<List<SimInfo>> = _availableSims.asStateFlow()
 
-    // Test account state
-    private val _isTestingAccount = MutableStateFlow(false)
-    val isTestingAccount: StateFlow<Boolean> = _isTestingAccount.asStateFlow()
+    /** Consent screen parked by the background forwarder when Gmail needs re-authorising. */
+    val pendingGoogleConsent: StateFlow<Intent?> = GoogleAuthRecovery.pendingConsent
+
+    // ---- Transient UI state -------------------------------------------------
+    private val _isBusy = MutableStateFlow(false)
+    val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
+
+    private val _message = MutableStateFlow<UiMessage?>(null)
+    val message: StateFlow<UiMessage?> = _message.asStateFlow()
 
     private val _accountTestResult = MutableStateFlow<ForwardResult?>(null)
     val accountTestResult: StateFlow<ForwardResult?> = _accountTestResult.asStateFlow()
 
-    // Simulation state
-    private val _isSimulating = MutableStateFlow(false)
-    val isSimulating: StateFlow<Boolean> = _isSimulating.asStateFlow()
-
     private val _lastSimulatedLogs = MutableStateFlow<List<SmsLogEntity>>(emptyList())
     val lastSimulatedLogs: StateFlow<List<SmsLogEntity>> = _lastSimulatedLogs.asStateFlow()
+
+    private val _simulationSummary = MutableStateFlow<String?>(null)
+    val simulationSummary: StateFlow<String?> = _simulationSummary.asStateFlow()
+
+    fun consumeMessage() {
+        _message.value = null
+    }
+
+    fun clearGoogleConsent() = GoogleAuthRecovery.clear()
+
+    // ---- Permissions --------------------------------------------------------
 
     fun updatePermissionsState(
         hasReceive: Boolean,
@@ -118,104 +139,105 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         hasNotif: Boolean,
         hasPhoneState: Boolean
     ) {
-        val hasAccess = NotificationManagerCompat.getEnabledListenerPackages(getApplication())
-            .contains(getApplication<Application>().packageName)
+        val context = getApplication<Application>()
+        val hasAccess = runCatching {
+            NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+        }.getOrDefault(false)
 
         _permissionsState.value = PermissionState(
             hasReceiveSms = hasReceive,
             hasSendSms = hasSend,
             hasNotificationPost = hasNotif,
             hasNotificationAccess = hasAccess,
-            hasReadPhoneState = hasPhoneState
+            hasReadPhoneState = hasPhoneState,
+            isBatteryOptimised = !PowerHelper.isIgnoringBatteryOptimizations(context)
         )
+
+        if (hasPhoneState) {
+            _availableSims.value = SimHelper.activeSims(context)
+        }
     }
 
+    // ---- Settings -----------------------------------------------------------
+
     fun toggleMasterSwitch(enabled: Boolean) {
-        val current = settingsRepo.getSettings()
-        settingsRepo.updateSettings(current.copy(isForwarderEnabled = enabled))
+        val updated = settingsRepo.getSettings().copy(isForwarderEnabled = enabled)
+        settingsRepo.updateSettings(updated)
+        syncForegroundService(updated)
+        _message.value = UiMessage(if (enabled) "Forwarding resumed" else "Forwarding paused")
     }
 
     fun saveSettings(settings: ForwarderSettings) {
         settingsRepo.updateSettings(settings)
+        syncForegroundService(settings)
     }
 
-    // Rules Management
-    fun createRule(
-        name: String,
-        recipientEmail: String,
-        forwardSms: Boolean,
-        forwardNotifications: Boolean,
-        simSlot: Int,
-        senderFilterType: String,
-        senderFilterValue: String,
-        contentFilterType: String,
-        contentFilterValue: String
-    ) {
-        viewModelScope.launch {
-            val rule = ForwardingRuleEntity(
-                name = name.ifBlank { "Forward to $recipientEmail" },
-                recipientEmail = recipientEmail.trim(),
-                forwardSms = forwardSms,
-                forwardNotifications = forwardNotifications,
-                simSlot = simSlot,
-                senderFilterType = senderFilterType,
-                senderFilterValue = senderFilterValue.trim(),
-                contentFilterType = contentFilterType,
-                contentFilterValue = contentFilterValue.trim(),
-                isEnabled = true
-            )
-            ruleRepo.insertRule(rule)
+    fun completeOnboarding() {
+        saveSettings(settingsRepo.getSettings().copy(onboardingCompleted = true))
+    }
+
+    private fun syncForegroundService(settings: ForwarderSettings) {
+        val context = getApplication<Application>()
+        if (settings.isForwarderEnabled && settings.keepServiceAlive) {
+            ForwarderForegroundService.start(context)
+        } else {
+            ForwarderForegroundService.stop(context)
         }
     }
 
-    fun updateRule(rule: ForwardingRuleEntity) {
+    // ---- Rules --------------------------------------------------------------
+
+    fun saveRule(rule: ForwardingRuleEntity) {
         viewModelScope.launch {
-            ruleRepo.updateRule(rule)
+            if (rule.id == 0L) {
+                ruleRepo.insertRule(rule)
+                _message.value = UiMessage("Rule created")
+            } else {
+                ruleRepo.updateRule(rule)
+                _message.value = UiMessage("Rule updated")
+            }
         }
     }
 
     fun toggleRule(ruleId: Long, enabled: Boolean) {
-        viewModelScope.launch {
-            ruleRepo.setRuleEnabled(ruleId, enabled)
-        }
+        viewModelScope.launch { ruleRepo.setRuleEnabled(ruleId, enabled) }
     }
 
     fun deleteRule(ruleId: Long) {
         viewModelScope.launch {
             ruleRepo.deleteRuleById(ruleId)
+            _message.value = UiMessage("Rule deleted")
         }
     }
 
-    // Account Test
+    fun testRule(rule: ForwardingRuleEntity) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val result = forwardingManager.testRule(rule)
+            _isBusy.value = false
+            _message.value = if (result.success) {
+                UiMessage("Test sent to ${rule.targets.firstOrNull().orEmpty()}")
+            } else {
+                UiMessage(result.errorMessage ?: "Test failed", isError = true)
+            }
+        }
+    }
+
+    // ---- Account test -------------------------------------------------------
+
     fun testSenderAccount(testRecipient: String) {
         viewModelScope.launch {
             val current = settingsRepo.getSettings()
             if (!current.isSenderAccountConfigured) {
-                val errorMsg = if (current.authMethod == "GOOGLE_OAUTH") {
-                    "Please connect your Google Account with 1 click first."
-                } else {
-                    "Please enter your sender Google Email and 16-character App Password first."
-                }
                 _accountTestResult.value = ForwardResult(
                     success = false,
-                    errorMessage = errorMsg
+                    errorMessage = "Connect your Google account first, or enter an app password."
                 )
                 return@launch
             }
-
-            _isTestingAccount.value = true
-            val target = testRecipient.ifBlank { current.senderEmailAccount }
-            val result = forwardingManager.testSenderAccount(
-                emailAccount = current.senderEmailAccount,
-                appPassword = current.senderAppPassword,
-                host = current.smtpHost,
-                port = current.smtpPort,
-                tls = current.smtpUseTls,
-                testRecipient = target,
-                authMethod = current.authMethod
-            )
-            _accountTestResult.value = result
-            _isTestingAccount.value = false
+            _isBusy.value = true
+            _accountTestResult.value = forwardingManager.testSenderAccount(testRecipient)
+            _isBusy.value = false
         }
     }
 
@@ -223,53 +245,111 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _accountTestResult.value = null
     }
 
-    // Simulate SMS
+    // ---- Simulator ----------------------------------------------------------
+
     fun simulateIncomingSms(sender: String, body: String, simSlot: Int = 0) {
         viewModelScope.launch {
-            _isSimulating.value = true
-            val results = forwardingManager.forwardIncomingSms(
+            _isBusy.value = true
+            val outcome = forwardingManager.forwardIncomingSms(
                 sender = sender,
                 body = body,
-                timestamp = System.currentTimeMillis(),
-                simSlot = simSlot
+                simSlot = simSlot,
+                simName = _availableSims.value.firstOrNull { it.slot == simSlot }?.displayName.orEmpty()
             )
-            _lastSimulatedLogs.value = results
-            _isSimulating.value = false
+            _lastSimulatedLogs.value = outcome.logs
+            _simulationSummary.value = describe(outcome.delivered, outcome.failed, outcome.queued, outcome.skippedReason)
+            _isBusy.value = false
         }
     }
 
-    // Simulate Notification
-    fun simulateIncomingNotification(appName: String, title: String, text: String) {
+    fun simulateIncomingNotification(appName: String, packageName: String, title: String, text: String) {
         viewModelScope.launch {
-            _isSimulating.value = true
-            val results = forwardingManager.forwardIncomingNotification(
+            _isBusy.value = true
+            val outcome = forwardingManager.forwardIncomingNotification(
                 appName = appName,
-                packageName = "com.sample.app",
+                packageName = packageName.ifBlank { "com.example.sample" },
                 title = title,
-                text = text,
-                timestamp = System.currentTimeMillis()
+                text = text
             )
-            _lastSimulatedLogs.value = results
-            _isSimulating.value = false
+            _lastSimulatedLogs.value = outcome.logs
+            _simulationSummary.value = describe(outcome.delivered, outcome.failed, outcome.queued, outcome.skippedReason)
+            _isBusy.value = false
         }
     }
 
-    fun retryLog(logId: Long, onComplete: () -> Unit) {
+    private fun describe(delivered: Int, failed: Int, queued: Int, skipped: String?): String = when {
+        skipped != null -> "Not forwarded: $skipped"
+        delivered == 0 && failed == 0 && queued == 0 -> "No rule matched this message."
+        else -> buildList {
+            if (delivered > 0) add("$delivered delivered")
+            if (queued > 0) add("$queued queued for retry")
+            if (failed > 0) add("$failed failed")
+        }.joinToString(", ")
+    }
+
+    // ---- Logs ---------------------------------------------------------------
+
+    fun retryLog(logId: Long, onComplete: () -> Unit = {}) {
         viewModelScope.launch {
-            forwardingManager.retryForwarding(logId)
+            _isBusy.value = true
+            val result = forwardingManager.retryForwarding(logId)
+            _isBusy.value = false
+            _message.value = if (result.success) {
+                UiMessage("Message resent")
+            } else {
+                UiMessage(result.errorMessage ?: "Retry failed", isError = true)
+            }
             onComplete()
         }
     }
 
     fun deleteLog(logId: Long) {
-        viewModelScope.launch {
-            smsLogRepo.deleteLogById(logId)
-        }
+        viewModelScope.launch { smsLogRepo.deleteLogById(logId) }
     }
 
     fun clearAllLogs() {
         viewModelScope.launch {
             smsLogRepo.clearAllLogs()
+            _message.value = UiMessage("History cleared")
         }
+    }
+
+    // ---- Backup / export ----------------------------------------------------
+
+    fun buildBackupJson(onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val json = BackupManager.exportToJson(ruleRepo.getAllForExport(), settingsRepo.getSettings())
+            _isBusy.value = false
+            onReady(json)
+        }
+    }
+
+    fun buildLogsCsv(onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val csv = BackupManager.exportLogsToCsv(smsLogRepo.getAllForExport())
+            _isBusy.value = false
+            onReady(csv)
+        }
+    }
+
+    fun restoreBackup(json: String) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val result = BackupManager.importFromJson(json, settingsRepo.getSettings())
+            if (result.error != null) {
+                _message.value = UiMessage(result.error, isError = true)
+            } else {
+                result.rules.forEach { ruleRepo.insertRule(it) }
+                result.settings?.let { settingsRepo.updateSettings(it) }
+                _message.value = UiMessage("Restored ${result.rules.size} rule(s)")
+            }
+            _isBusy.value = false
+        }
+    }
+
+    companion object {
+        const val FILTER_ALL = "ALL"
     }
 }

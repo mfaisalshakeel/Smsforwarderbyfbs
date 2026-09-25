@@ -6,41 +6,33 @@ import kotlinx.coroutines.flow.Flow
 
 class SmsLogRepository(private val smsLogDao: SmsLogDao) {
 
-    val allLogs: Flow<List<SmsLogEntity>> = smsLogDao.getAllLogs()
     val recentLogs: Flow<List<SmsLogEntity>> = smsLogDao.getRecentLogs(10)
     val totalCount: Flow<Int> = smsLogDao.getTotalCount()
     val successCount: Flow<Int> = smsLogDao.getSuccessCount()
     val failedCount: Flow<Int> = smsLogDao.getFailedCount()
+    val pendingCount: Flow<Int> = smsLogDao.getPendingCount()
 
-    fun getLogsByStatus(status: String): Flow<List<SmsLogEntity>> {
-        return smsLogDao.getLogsByStatus(status)
-    }
+    fun getFilteredLogs(query: String, status: String, source: String): Flow<List<SmsLogEntity>> =
+        smsLogDao.getFilteredLogs(query = query, status = status, source = source)
 
-    fun getLogsByDestination(dest: String): Flow<List<SmsLogEntity>> {
-        return smsLogDao.getLogsByDestination(dest)
-    }
+    suspend fun getLogById(id: Long): SmsLogEntity? = smsLogDao.getLogById(id)
 
-    suspend fun getLogById(id: Long): SmsLogEntity? {
-        return smsLogDao.getLogById(id)
-    }
+    suspend fun getDueForRetry(now: Long): List<SmsLogEntity> = smsLogDao.getDueForRetry(now)
 
-    suspend fun insertLog(log: SmsLogEntity): Long {
-        return smsLogDao.insertLog(log)
-    }
+    suspend fun countQueued(): Int = smsLogDao.countQueued()
 
-    suspend fun updateLog(log: SmsLogEntity) {
-        smsLogDao.updateLog(log)
-    }
+    suspend fun wasRecentlyForwarded(contentHash: String, since: Long): Boolean =
+        contentHash.isNotEmpty() && smsLogDao.countRecentWithHash(contentHash, since) > 0
 
-    suspend fun deleteLogById(id: Long) {
-        smsLogDao.deleteLogById(id)
-    }
+    suspend fun insertLog(log: SmsLogEntity): Long = smsLogDao.insertLog(log)
 
-    suspend fun deleteAllLogs() {
-        smsLogDao.deleteAllLogs()
-    }
+    suspend fun updateLog(log: SmsLogEntity) = smsLogDao.updateLog(log)
 
-    suspend fun clearAllLogs() {
-        smsLogDao.deleteAllLogs()
-    }
+    suspend fun deleteLogById(id: Long) = smsLogDao.deleteLogById(id)
+
+    suspend fun clearAllLogs() = smsLogDao.deleteAllLogs()
+
+    suspend fun deleteOlderThan(cutoff: Long): Int = smsLogDao.deleteOlderThan(cutoff)
+
+    suspend fun getAllForExport(): List<SmsLogEntity> = smsLogDao.getAllForExport()
 }

@@ -1,5 +1,12 @@
 # SMS & Notification Forwarder — Project Audit / Issue List
 
+> **Status:** most of this list has been fixed on branch `claude/lucid-bell-jxu2q3`.
+> See [`CHANGELOG.md`](CHANGELOG.md) for what changed and what is still open.
+> The remaining open items are **4.8** (digest/batching), **4.11** (app lock),
+> **4.12** (missed calls), **4.13** (MMS) and **2.14** (migrate off the deprecated
+> `GoogleSignIn` API). This document is kept as the original audit, unedited below,
+> so the fixes can be checked against it.
+
 Audit date: 2026-09-25 · Branch: `claude/lucid-bell-jxu2q3` · Codebase: ~7,100 lines Kotlin (Compose + Room)
 
 This document lists every problem found in a full read of the codebase, grouped by severity.

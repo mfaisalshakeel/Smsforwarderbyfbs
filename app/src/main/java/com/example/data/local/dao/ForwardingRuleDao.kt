@@ -23,6 +23,9 @@ interface ForwardingRuleDao {
     @Query("SELECT * FROM forwarding_rules WHERE id = :id LIMIT 1")
     suspend fun getRuleById(id: Long): ForwardingRuleEntity?
 
+    @Query("SELECT * FROM forwarding_rules ORDER BY createdAt ASC")
+    suspend fun getAllForExport(): List<ForwardingRuleEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRule(rule: ForwardingRuleEntity): Long
 
