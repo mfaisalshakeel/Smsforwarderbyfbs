@@ -1,0 +1,6 @@
+{
+  "name": "SMS Forwarder",
+  "description": "Native Android SMS forwarder app that captures incoming text messages via BroadcastReceiver and automatically forwards them to Phone numbers, Webhooks, or Email with local Room logs and rules.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

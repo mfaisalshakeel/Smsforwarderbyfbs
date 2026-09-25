@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer chat bubble badge shadow -->
+    <path
+        android:pathData="M30,34 C30,29.58 33.58,26 38,26 L70,26 C74.42,26 78,29.58 78,34 L78,64 C78,68.42 74.42,72 70,72 L42,72 L32,82 L32,72 L38,72 C33.58,72 30,68.42 30,64 Z"
+        android:fillColor="#1E3A8A" />
+
+    <!-- Chat bubble body with crisp highlight -->
+    <path
+        android:pathData="M32,34 C32,30.69 34.69,28 38,28 L70,28 C73.31,28 76,30.69 76,34 L76,62 C76,65.31 73.31,68 70,68 L44,68 L36,76 L36,68 L38,68 C34.69,68 32,65.31 32,62 Z"
+        android:fillColor="#0284C7" />
+
+    <!-- Inner message lines -->
+    <path
+        android:pathData="M40,38 L54,38"
+        android:strokeWidth="3"
+        android:strokeColor="#BAE6FD"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M40,46 L48,46"
+        android:strokeWidth="3"
+        android:strokeColor="#BAE6FD"
+        android:strokeLineCap="round" />
+
+    <!-- Forward action circle badge in bottom right -->
+    <path
+        android:pathData="M64,56 A14,14 0 1 0 64,84 A14,14 0 1 0 64,56 Z"
+        android:fillColor="#0284C7" />
+    <path
+        android:pathData="M64,58 A12,12 0 1 0 64,82 A12,12 0 1 0 64,58 Z"
+        android:fillColor="#38BDF8" />
+
+    <!-- Crisp forward arrow inside badge -->
+    <path
+        android:pathData="M61,65 L66,70 L61,75 M57,70 L66,70"
+        android:strokeWidth="3"
+        android:strokeColor="#0F172A"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
