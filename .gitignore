@@ -16,3 +16,6 @@
 local.properties
 .env
 debug.keystore
+
+# Local build outputs handed to the user; never commit signed artifacts.
+dist/

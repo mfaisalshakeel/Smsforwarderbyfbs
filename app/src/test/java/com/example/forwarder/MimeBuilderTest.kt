@@ -59,8 +59,36 @@ class MimeBuilderTest {
             body = "Body",
             timestamp = 0L
         )
-        val headerSection = message.substringBefore("\r\n\r\n")
-        assertFalse(headerSection.contains("Bcc:"))
+        val headerLines = message.substringBefore("\r\n\r\n").split("\r\n")
+
+        // The attack is a *new header line*, not the text appearing somewhere. The CRLF is
+        // folded to a space, so "Bcc:" survives as part of the From display name and is
+        // harmless - what must not exist is a line that begins with it.
+        assertFalse(headerLines.any { it.startsWith("Bcc:", ignoreCase = true) })
+        assertTrue(headerLines.any { it.startsWith("From:") && it.contains("me@example.com") })
+    }
+
+    @Test
+    fun `a subject carrying a newline cannot add a header to the message`() {
+        val message = MimeBuilder.buildMessage(
+            fromName = "Forwarder",
+            fromEmail = "me@example.com",
+            toEmail = "you@example.com",
+            subject = "Hi\r\nBcc: victim@example.com",
+            body = "Body",
+            timestamp = 0L
+        )
+        val headerLines = message.substringBefore("\r\n\r\n").split("\r\n")
+        assertFalse(headerLines.any { it.startsWith("Bcc:", ignoreCase = true) })
+    }
+
+    @Test
+    fun `a display name containing address punctuation is quoted`() {
+        // Unquoted, the colon and comma here would be read as address syntax.
+        assertEquals(
+            "\"Bank: alerts, daily\" <a@b.com>",
+            MimeBuilder.formatAddress("Bank: alerts, daily", "a@b.com")
+        )
     }
 
     @Test

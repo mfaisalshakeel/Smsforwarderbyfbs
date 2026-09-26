@@ -78,6 +78,10 @@ object SimHelper {
                         ?: "SIM ${info.simSlotIndex + 1}"
                 )
             }.sortedBy { it.slot }
+        } catch (e: SecurityException) {
+            // The permission can be revoked between the check above and this call.
+            Log.w(TAG, "READ_PHONE_STATE not granted; cannot list SIMs")
+            emptyList()
         } catch (e: Exception) {
             Log.w(TAG, "Unable to list active SIMs", e)
             emptyList()

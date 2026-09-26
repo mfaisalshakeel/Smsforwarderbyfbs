@@ -61,11 +61,16 @@ object MimeBuilder {
     /** Formats an address as `Display Name <user@example.com>`, encoding the name if needed. */
     fun formatAddress(displayName: String, email: String): String {
         val address = sanitizeHeader(email)
-        val name = displayName.trim()
-        if (name.isEmpty()) return "<$address>"
-        val encodedName = encodeHeaderValue(name)
-        // A quoted string cannot contain an encoded word, so only quote plain ASCII names.
-        return if (encodedName == name) "\"${name.replace("\"", "'")}\" <$address>" else "$encodedName <$address>"
+        val clean = sanitizeHeader(displayName)
+        if (clean.isEmpty()) return "<$address>"
+        val encoded = encodeHeaderValue(clean)
+        // An encoded word must not be quoted, but a plain name must be: quoting stops a colon
+        // or comma inside the name from being read as address syntax.
+        return if (encoded == clean) {
+            "\"${clean.replace("\"", "'")}\" <$address>"
+        } else {
+            "$encoded <$address>"
+        }
     }
 
     /** Base64-encodes the body and wraps it to the 76-character line limit. */
