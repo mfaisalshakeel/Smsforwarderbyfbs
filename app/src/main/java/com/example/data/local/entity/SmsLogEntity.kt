@@ -9,6 +9,8 @@ object LogStatus {
     const val SUCCESS = "SUCCESS"
     const val FAILED = "FAILED"
     const val PENDING = "PENDING"
+    /** Collected by a digest rule, waiting to be sent as part of a batch. */
+    const val BATCHED = "BATCHED"
     const val SKIPPED = "SKIPPED"
 }
 
@@ -54,4 +56,8 @@ data class SmsLogEntity(
 ) {
     val isRetryable: Boolean
         get() = status == LogStatus.FAILED || status == LogStatus.PENDING
+
+    /** Waiting in a digest batch rather than having failed. */
+    val isBatched: Boolean
+        get() = status == LogStatus.BATCHED
 }

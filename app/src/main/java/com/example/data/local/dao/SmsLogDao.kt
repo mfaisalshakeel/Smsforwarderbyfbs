@@ -75,6 +75,39 @@ interface SmsLogDao {
     @Query("SELECT COUNT(*) FROM sms_logs WHERE status IN ('PENDING', 'FAILED') AND nextAttemptAt IS NOT NULL")
     suspend fun countQueued(): Int
 
+    // ---- Digest batching ---------------------------------------------------
+
+    /** Messages collected by digest rules whose batch is now due. */
+    @Query(
+        """
+        SELECT * FROM sms_logs
+        WHERE status = 'BATCHED'
+          AND nextAttemptAt IS NOT NULL
+          AND nextAttemptAt <= :now
+        ORDER BY receivedAt ASC
+        """
+    )
+    suspend fun getDueDigestEntries(now: Long): List<SmsLogEntity>
+
+    /**
+     * When the batch this rule is already collecting into is due, so a later message joins the
+     * same batch instead of starting its own.
+     */
+    @Query(
+        """
+        SELECT MIN(nextAttemptAt) FROM sms_logs
+        WHERE status = 'BATCHED' AND ruleId = :ruleId AND nextAttemptAt IS NOT NULL
+        """
+    )
+    suspend fun getOpenBatchDueAt(ruleId: Long): Long?
+
+    /** The soonest pending batch across every rule, used to schedule the digest worker. */
+    @Query("SELECT MIN(nextAttemptAt) FROM sms_logs WHERE status = 'BATCHED' AND nextAttemptAt IS NOT NULL")
+    suspend fun getNextBatchDueAt(): Long?
+
+    @Query("SELECT COUNT(*) FROM sms_logs WHERE status = 'BATCHED'")
+    fun getBatchedCount(): Flow<Int>
+
     /** Used to suppress a notification that was already forwarded moments ago. */
     @Query(
         """

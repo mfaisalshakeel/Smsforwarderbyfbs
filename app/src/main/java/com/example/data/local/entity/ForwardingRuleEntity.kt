@@ -2,6 +2,7 @@ package com.example.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.example.forwarder.MessageSource
 
 /** Where a matched message is delivered. */
 object DestinationType {
@@ -42,7 +43,11 @@ data class ForwardingRuleEntity(
 
     // ---- Sources -----------------------------------------------------------
     val forwardSms: Boolean = true,
+    /** Picture / group messages. Captured from the MMS provider, not the SMS broadcast. */
+    val forwardMms: Boolean = false,
     val forwardNotifications: Boolean = false,
+    /** Missed incoming calls. */
+    val forwardMissedCalls: Boolean = false,
     /** Comma-separated package names chosen in the app picker. Blank means every app. */
     val appPackages: String = "",
     /** 0 = any SIM, 1 = SIM 1, 2 = SIM 2. */
@@ -71,6 +76,12 @@ data class ForwardingRuleEntity(
     val subjectTemplate: String = "",
     val bodyTemplate: String = "",
 
+    // ---- Digest -----------------------------------------------------------
+    /** Collect matches and send them as one combined message instead of one each. */
+    val digestEnabled: Boolean = false,
+    /** How long to collect for before sending the batch. */
+    val digestIntervalMinutes: Int = 60,
+
     val createdAt: Long = System.currentTimeMillis()
 ) {
     /** The addresses/targets this rule delivers to, already split and trimmed. */
@@ -91,4 +102,17 @@ data class ForwardingRuleEntity(
     val isConfigured: Boolean
         get() = targets.isNotEmpty() &&
             (destinationType != DestinationType.TELEGRAM || telegramBotToken.isNotBlank())
+
+    /** True when this rule listens to at least one kind of event. */
+    val hasAnySource: Boolean
+        get() = forwardSms || forwardMms || forwardNotifications || forwardMissedCalls
+
+    /** Whether this rule wants the given [MessageSource]. */
+    fun acceptsSource(source: String): Boolean = when (source) {
+        MessageSource.SMS -> forwardSms
+        MessageSource.MMS -> forwardMms
+        MessageSource.NOTIFICATION -> forwardNotifications
+        MessageSource.CALL -> forwardMissedCalls
+        else -> false
+    }
 }

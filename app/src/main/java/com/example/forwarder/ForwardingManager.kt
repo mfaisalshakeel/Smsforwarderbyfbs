@@ -6,6 +6,7 @@ import com.example.data.local.entity.ForwardingRuleEntity
 import com.example.data.local.entity.LogStatus
 import com.example.data.local.entity.SmsLogEntity
 import com.example.data.preferences.AuthMethod
+import com.example.data.preferences.EngineStateStore
 import com.example.data.preferences.ForwarderSettings
 import com.example.data.preferences.SettingsRepository
 import com.example.data.repository.ForwardingRuleRepository
@@ -22,20 +23,26 @@ data class ForwardOutcome(
     val delivered: Int = 0,
     val failed: Int = 0,
     val queued: Int = 0,
+    /** Collected into a digest batch rather than sent straight away. */
+    val batched: Int = 0,
     val skippedReason: String? = null
 ) {
-    val attempted: Int get() = delivered + failed + queued
+    val attempted: Int get() = delivered + failed + queued + batched
 }
 
 /** How many entries the retry pass handled. */
 data class RetryOutcome(val processed: Int, val delivered: Int, val remaining: Int)
+
+/** How many digest batches were sent, and when the next one is due. */
+data class DigestOutcome(val batchesSent: Int, val messagesSent: Int, val nextDueAt: Long?)
 
 class ForwardingManager(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val ruleRepository: ForwardingRuleRepository,
     private val smsLogRepository: SmsLogRepository,
-    private val notificationHelper: NotificationHelper
+    private val notificationHelper: NotificationHelper,
+    private val engineStateStore: EngineStateStore
 ) {
     private val emailForwarder = EmailForwarder()
     private val webhookForwarder = WebhookForwarder()
@@ -55,9 +62,45 @@ class ForwardingManager(
             sender = sender,
             body = body,
             timestamp = timestamp,
-            source = SOURCE_SMS,
+            source = MessageSource.SMS,
             simSlot = simSlot,
             simName = simName
+        )
+    )
+
+    suspend fun forwardIncomingMms(
+        sender: String,
+        body: String,
+        timestamp: Long = System.currentTimeMillis(),
+        attachmentCount: Int = 0,
+        simSlot: Int = 0,
+        simName: String = ""
+    ): ForwardOutcome = process(
+        MessageContext(
+            sender = sender,
+            body = body,
+            timestamp = timestamp,
+            source = MessageSource.MMS,
+            simSlot = simSlot,
+            simName = simName,
+            attachmentCount = attachmentCount
+        )
+    )
+
+    suspend fun forwardMissedCall(
+        number: String,
+        displayName: String,
+        timestamp: Long = System.currentTimeMillis()
+    ): ForwardOutcome = process(
+        MessageContext(
+            sender = displayName.ifBlank { number.ifBlank { "Unknown number" } },
+            body = if (number.isBlank()) {
+                "Missed call from a withheld number."
+            } else {
+                "Missed call from $number."
+            },
+            timestamp = timestamp,
+            source = MessageSource.CALL
         )
     )
 
@@ -72,7 +115,7 @@ class ForwardingManager(
             sender = appName,
             body = text,
             timestamp = timestamp,
-            source = SOURCE_NOTIFICATION,
+            source = MessageSource.NOTIFICATION,
             appName = appName,
             packageName = packageName,
             title = title
@@ -82,6 +125,9 @@ class ForwardingManager(
     // ---------------------------------------------------------------- core pipeline
 
     private suspend fun process(ctx: MessageContext): ForwardOutcome = withContext(Dispatchers.IO) {
+        // Recorded before any filtering, so the health screen can prove the engine is being
+        // reached even when a rule then decides not to forward.
+        engineStateStore.recordEvent(ctx.source)
         val settings = settingsRepository.getSettings()
 
         if (!settings.isForwarderEnabled) {
@@ -117,8 +163,10 @@ class ForwardingManager(
         var delivered = 0
         var failed = 0
         var queued = 0
+        var batched = 0
         val summaries = mutableListOf<String>()
         var anyRuleMatched = false
+        var earliestBatchDue: Long? = null
 
         for (rule in rules) {
             val ruleCtx = ctx.copy(ruleName = rule.name)
@@ -136,6 +184,30 @@ class ForwardingManager(
 
             val subject = renderSubject(rule, ruleCtx)
             val bodyText = renderBody(rule, ruleCtx, settings)
+
+            // A digest rule collects instead of sending: the message is parked with the due
+            // time of the batch that is already open, so everything in one window goes together.
+            if (rule.digestEnabled) {
+                val dueAt = smsLogRepository.getOpenBatchDueAt(rule.id)
+                    ?: (System.currentTimeMillis() + rule.digestIntervalMinutes * MINUTE_MILLIS)
+                earliestBatchDue = minOf(earliestBatchDue ?: dueAt, dueAt)
+
+                for (target in rule.targets) {
+                    logs += record(
+                        ctx = ruleCtx,
+                        rule = rule,
+                        target = target,
+                        status = LogStatus.BATCHED,
+                        contentHash = contentHash,
+                        subject = subject,
+                        body = bodyText,
+                        nextAttemptAt = dueAt
+                    )
+                    batched++
+                }
+                summaries += "Added to the next digest"
+                continue
+            }
 
             for (target in rule.targets) {
                 val result = deliver(rule, ruleCtx, target, subject, bodyText, settings)
@@ -157,6 +229,7 @@ class ForwardingManager(
                 when (attempt.status) {
                     LogStatus.SUCCESS -> {
                         delivered++
+                        engineStateStore.recordDelivery()
                         summaries += "Sent to $target"
                     }
                     LogStatus.PENDING -> {
@@ -183,6 +256,14 @@ class ForwardingManager(
             )
         }
 
+        earliestBatchDue?.let { dueAt ->
+            ForwardScheduler.enqueueDigest(
+                context = context,
+                delayMillis = dueAt - System.currentTimeMillis(),
+                requireUnmeteredNetwork = settings.retryOnlyOnWifi
+            )
+        }
+
         if (settings.notifyOnForward && summaries.isNotEmpty()) {
             notificationHelper.showForwardedNotification(
                 sender = ctx.sender,
@@ -192,7 +273,13 @@ class ForwardingManager(
             )
         }
 
-        ForwardOutcome(logs = logs, delivered = delivered, failed = failed, queued = queued)
+        ForwardOutcome(
+            logs = logs,
+            delivered = delivered,
+            failed = failed,
+            queued = queued,
+            batched = batched
+        )
     }
 
     /** Sends to one target using the transport the rule asks for. */
@@ -367,6 +454,92 @@ class ForwardingManager(
         )
     }
 
+    /**
+     * Sends every digest batch that is now due, one combined message per rule, and reports when
+     * the next batch falls due so the worker can be rescheduled.
+     */
+    suspend fun drainDigests(): DigestOutcome = withContext(Dispatchers.IO) {
+        val settings = settingsRepository.getSettings()
+        val due = smsLogRepository.getDueDigestEntries(System.currentTimeMillis())
+        if (due.isEmpty()) {
+            return@withContext DigestOutcome(0, 0, smsLogRepository.getNextBatchDueAt())
+        }
+
+        var batchesSent = 0
+        var messagesSent = 0
+
+        // One batch per rule and target: a rule with two recipients sends each of them a digest.
+        val batches = due.groupBy { it.ruleId to it.destinationTarget }
+
+        for ((key, entries) in batches) {
+            val (ruleId, target) = key
+            val rule = ruleId?.let { ruleRepository.getRuleById(it) }
+            if (rule == null) {
+                entries.forEach { entry ->
+                    smsLogRepository.updateLog(
+                        entry.copy(
+                            status = LogStatus.FAILED,
+                            errorMessage = "The rule behind this digest was deleted.",
+                            nextAttemptAt = null
+                        )
+                    )
+                }
+                continue
+            }
+
+            val digestEntries = entries
+                .sortedBy { it.receivedAt }
+                .map {
+                    MessageTemplate.DigestEntry(
+                        sender = it.sender,
+                        body = it.body,
+                        receivedAt = it.receivedAt,
+                        source = it.source
+                    )
+                }
+
+            val subject = MessageTemplate.digestSubject(rule.name, digestEntries.size)
+            val body = MessageTemplate.digestBody(rule.name, digestEntries, settings.includeBrandingFooter)
+
+            // The digest is one message, so it carries the newest entry's context.
+            val newest = entries.maxByOrNull { it.receivedAt } ?: entries.first()
+            val ctx = contextFrom(newest, rule)
+
+            val result = deliver(rule, ctx, target, subject, body, settings)
+            val settled = if (result.success) LogStatus.SUCCESS else LogStatus.FAILED
+            val now = System.currentTimeMillis()
+
+            entries.forEach { entry ->
+                smsLogRepository.updateLog(
+                    entry.copy(
+                        status = settled,
+                        errorMessage = result.errorMessage,
+                        responsePayload = result.responseDetails,
+                        forwardedAt = if (result.success) now else null,
+                        renderedSubject = subject,
+                        nextAttemptAt = null
+                    )
+                )
+            }
+
+            if (result.success) {
+                batchesSent++
+                messagesSent += entries.size
+                engineStateStore.recordDelivery()
+                if (settings.notifyOnForward) {
+                    notificationHelper.showForwardedNotification(
+                        sender = rule.name,
+                        body = "${entries.size} message(s) collected",
+                        destinationsSummary = "Digest sent to $target",
+                        allSuccess = true
+                    )
+                }
+            }
+        }
+
+        DigestOutcome(batchesSent, messagesSent, smsLogRepository.getNextBatchDueAt())
+    }
+
     // ---------------------------------------------------------------- diagnostics
 
     /** "Send test message" from Setup. */
@@ -399,7 +572,7 @@ class ForwardingManager(
             sender = "+10000000000",
             body = "This is a test message from your \"${rule.name}\" rule.",
             timestamp = System.currentTimeMillis(),
-            source = SOURCE_SMS,
+            source = MessageSource.SMS,
             ruleName = rule.name
         )
         deliver(rule, ctx, target, renderSubject(rule, ctx), renderBody(rule, ctx, settings), settings)
@@ -453,7 +626,7 @@ class ForwardingManager(
         timestamp = log.receivedAt,
         source = log.source,
         simSlot = log.simSlot,
-        appName = if (log.source == SOURCE_NOTIFICATION) log.sender else "",
+        appName = if (log.source == MessageSource.NOTIFICATION) log.sender else "",
         packageName = log.packageName.orEmpty(),
         ruleName = rule.name
     )
@@ -531,8 +704,7 @@ class ForwardingManager(
     }
 
     private companion object {
-        const val SOURCE_SMS = "SMS"
-        const val SOURCE_NOTIFICATION = "NOTIFICATION"
         const val DAY_MILLIS = 24L * 60L * 60L * 1000L
+        const val MINUTE_MILLIS = 60L * 1000L
     }
 }

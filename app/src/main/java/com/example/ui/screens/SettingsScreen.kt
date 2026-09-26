@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.preferences.AuthMethod
 import com.example.data.preferences.ThemeMode
 import com.example.ui.components.AppCard
+import com.example.ui.components.BackgroundDiagnosticsCard
 import com.example.ui.components.ConnectedAccountCard
 import com.example.ui.components.ContentContainer
 import com.example.ui.components.FieldLabel
@@ -62,6 +63,8 @@ import com.example.ui.components.Tone
 import com.example.ui.theme.Shapes
 import com.example.ui.theme.Spacing
 import com.example.ui.viewmodel.MainViewModel
+import com.example.util.LockAvailability
+import com.example.util.PowerHelper
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -77,6 +80,10 @@ fun SettingsScreen(
     val permissions by viewModel.permissionsState.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     val testResult by viewModel.accountTestResult.collectAsStateWithLifecycle()
+    val health by viewModel.backgroundHealth.collectAsStateWithLifecycle()
+    val engineState by viewModel.engineState.collectAsStateWithLifecycle()
+    val now by viewModel.clock.collectAsStateWithLifecycle()
+    val lockAvailability by viewModel.lockAvailability.collectAsStateWithLifecycle()
 
     var testRecipient by rememberSaveable { mutableStateOf("") }
     // Deliberately `remember`, not `rememberSaveable`: the password must not be written into
@@ -284,6 +291,22 @@ fun SettingsScreen(
                 subtitle = "Keep the app running so messages are never missed"
             )
 
+            BackgroundDiagnosticsCard(
+                health = health,
+                now = now,
+                serviceRunning = engineState.serviceRunning,
+                lastStopReason = engineState.lastStopReason
+            )
+
+            if (PowerHelper.manufacturerNeedsAutostart()) {
+                InfoBanner(
+                    title = "This phone needs autostart enabled",
+                    message = PowerHelper.autostartInstructions(),
+                    tone = Tone.Warning,
+                    icon = Icons.Default.BatteryAlert
+                )
+            }
+
             AppCard {
                 SettingSwitchRow(
                     title = "Keep running in the background",
@@ -483,6 +506,24 @@ fun SettingsScreen(
 
             // ---------------------------------------------------------- Privacy
             SectionHeader(title = "Privacy")
+
+            AppCard {
+                SettingSwitchRow(
+                    title = "Lock the app",
+                    subtitle = when (lockAvailability) {
+                        LockAvailability.AVAILABLE ->
+                            "Ask for your fingerprint, face or PIN before showing your messages"
+                        LockAvailability.NOT_ENROLLED ->
+                            "Set a screen lock or fingerprint on this phone first"
+                        LockAvailability.UNSUPPORTED ->
+                            "This phone has no screen lock, so the app cannot be locked"
+                    },
+                    checked = settings.appLockEnabled,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(appLockEnabled = it)) },
+                    enabled = lockAvailability == LockAvailability.AVAILABLE
+                )
+            }
+
             AppCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(

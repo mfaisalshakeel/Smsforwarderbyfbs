@@ -15,7 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PhoneMissed
 import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.entity.LogStatus
 import com.example.data.local.entity.SmsLogEntity
+import com.example.forwarder.MessageSource
 import com.example.ui.theme.Shapes
 import com.example.ui.theme.Spacing
 import java.text.SimpleDateFormat
@@ -46,7 +49,7 @@ import java.util.Locale
 fun statusTone(status: String): Tone = when (status) {
     LogStatus.SUCCESS -> Tone.Success
     LogStatus.FAILED -> Tone.Danger
-    LogStatus.PENDING -> Tone.Warning
+    LogStatus.PENDING, LogStatus.BATCHED -> Tone.Warning
     else -> Tone.Neutral
 }
 
@@ -54,8 +57,16 @@ fun statusLabel(status: String): String = when (status) {
     LogStatus.SUCCESS -> "Delivered"
     LogStatus.FAILED -> "Failed"
     LogStatus.PENDING -> "Queued"
+    LogStatus.BATCHED -> "In digest"
     LogStatus.SKIPPED -> "Skipped"
     else -> status
+}
+
+private fun sourceIcon(source: String): ImageVector = when (source) {
+    MessageSource.NOTIFICATION -> Icons.Default.Notifications
+    MessageSource.CALL -> Icons.Default.PhoneMissed
+    MessageSource.MMS -> Icons.Default.Image
+    else -> Icons.Default.Sms
 }
 
 private fun statusIcon(status: String): ImageVector = when (status) {
@@ -93,16 +104,8 @@ fun LogItemCard(
         Column(modifier = Modifier.padding(Spacing.lg)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = if (log.source == "NOTIFICATION") {
-                        Icons.Default.Notifications
-                    } else {
-                        Icons.Default.Sms
-                    },
-                    contentDescription = if (log.source == "NOTIFICATION") {
-                        "App notification"
-                    } else {
-                        "Text message"
-                    },
+                    imageVector = sourceIcon(log.source),
+                    contentDescription = MessageSource.label(log.source),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
@@ -176,7 +179,7 @@ fun LogDetailDialog(
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 DetailRow("Received", formatFullTimestamp(log.receivedAt))
-                DetailRow("Source", if (log.source == "NOTIFICATION") "App notification" else "Text message")
+                DetailRow("Source", MessageSource.label(log.source))
                 log.packageName?.let { DetailRow("App package", it) }
                 log.ruleName?.let { DetailRow("Rule", it) }
                 DetailRow("Destination", "${log.destinationType} → ${log.destinationTarget}")
@@ -217,7 +220,9 @@ fun LogDetailDialog(
             }
         },
         confirmButton = {
-            if (log.isRetryable) {
+            if (log.isBatched) {
+                TextButton(onClick = onDismiss) { Text("Close") }
+            } else if (log.isRetryable) {
                 Button(onClick = onRetry, enabled = !isRetrying, shape = Shapes.button) {
                     if (isRetrying) {
                         CircularProgressIndicator(

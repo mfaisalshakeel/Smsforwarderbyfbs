@@ -44,6 +44,47 @@ object PowerHelper {
     fun notificationAccessIntent(): Intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
 
     /**
+     * This app's notification settings. Needed when notifications are blocked, because the
+     * ongoing notification is what lets the foreground service keep running at all.
+     */
+    fun appNotificationSettingsIntent(context: Context): Intent =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        } else {
+            appSettingsIntent(context)
+        }
+
+    /** Where each manufacturer hides its own background-app switch. */
+    fun autostartInstructions(): String {
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        return when {
+            manufacturer.contains("xiaomi") || manufacturer.contains("redmi") ||
+                manufacturer.contains("poco") ->
+                "Settings > Apps > Manage apps > SMS Forwarder > Autostart (turn on), then " +
+                    "Battery saver > No restrictions."
+            manufacturer.contains("oppo") || manufacturer.contains("realme") ->
+                "Settings > Battery > App battery management > SMS Forwarder > Allow background " +
+                    "activity, and turn on Auto-launch."
+            manufacturer.contains("vivo") || manufacturer.contains("iqoo") ->
+                "Settings > Battery > Background power consumption management > SMS Forwarder > " +
+                    "Allow high background power consumption."
+            manufacturer.contains("huawei") || manufacturer.contains("honor") ->
+                "Settings > Battery > App launch > SMS Forwarder > Manage manually, and turn on " +
+                    "all three switches."
+            manufacturer.contains("samsung") ->
+                "Settings > Battery > Background usage limits > make sure SMS Forwarder is not in " +
+                    "\"Sleeping apps\" or \"Deep sleeping apps\"."
+            manufacturer.contains("oneplus") ->
+                "Settings > Battery > Battery optimisation > SMS Forwarder > Don't optimise, and " +
+                    "turn off Advanced optimisation."
+            else ->
+                "Open your phone's battery or security settings and allow SMS Forwarder to run in " +
+                    "the background and start automatically."
+        }
+    }
+
+    /**
      * Xiaomi, Oppo, Vivo and their relatives freeze background apps regardless of the platform
      * exemption, and each hides the switch in a different place.
      */

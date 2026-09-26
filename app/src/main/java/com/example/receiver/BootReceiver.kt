@@ -26,6 +26,7 @@ class BootReceiver : BroadcastReceiver() {
             ForwarderForegroundService.start(context)
 
             val app = context.applicationContext as? SmsForwarderApplication ?: return
+            app.engineStateStore.recordBootRestart()
             ForwardScheduler.enqueueImmediateDrain(
                 context = context,
                 requireUnmeteredNetwork = app.settingsRepository.getSettings().retryOnlyOnWifi

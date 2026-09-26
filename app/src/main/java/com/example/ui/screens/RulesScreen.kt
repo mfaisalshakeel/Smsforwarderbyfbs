@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -193,6 +194,8 @@ private fun RuleCard(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             if (rule.forwardSms) StatusPill(text = "SMS", tone = Tone.Info)
+            if (rule.forwardMms) StatusPill(text = "MMS", tone = Tone.Info)
+            if (rule.forwardMissedCalls) StatusPill(text = "Missed calls", tone = Tone.Info)
             if (rule.forwardNotifications) {
                 val appCount = rule.selectedPackages.size
                 StatusPill(
@@ -209,6 +212,9 @@ private fun RuleCard(
             }
             if (rule.scheduleEnabled) {
                 StatusPill(text = "Scheduled", tone = Tone.Neutral, icon = Icons.Default.Schedule)
+            }
+            if (rule.digestEnabled) {
+                StatusPill(text = "Digest", tone = Tone.Neutral, icon = Icons.Default.Inbox)
             }
             if (!rule.isConfigured) {
                 StatusPill(text = "Incomplete", tone = Tone.Danger)

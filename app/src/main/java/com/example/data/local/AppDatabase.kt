@@ -13,7 +13,7 @@ import com.example.data.local.entity.SmsLogEntity
 
 @Database(
     entities = [SmsLogEntity::class, ForwardingRuleEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -118,6 +118,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 adds the two new event sources (picture messages and missed calls) and the
+         * per-rule digest settings. Existing rules keep their behaviour: both new sources
+         * default to off.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "`forwardMms` INTEGER NOT NULL DEFAULT 0",
+                    "`forwardMissedCalls` INTEGER NOT NULL DEFAULT 0",
+                    "`digestEnabled` INTEGER NOT NULL DEFAULT 0",
+                    "`digestIntervalMinutes` INTEGER NOT NULL DEFAULT 60"
+                ).forEach { db.execSQL("ALTER TABLE `forwarding_rules` ADD COLUMN $it") }
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -125,7 +141,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DB_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }

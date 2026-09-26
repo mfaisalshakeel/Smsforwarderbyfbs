@@ -21,6 +21,14 @@ class SmsLogRepository(private val smsLogDao: SmsLogDao) {
 
     suspend fun countQueued(): Int = smsLogDao.countQueued()
 
+    val batchedCount: Flow<Int> = smsLogDao.getBatchedCount()
+
+    suspend fun getDueDigestEntries(now: Long): List<SmsLogEntity> = smsLogDao.getDueDigestEntries(now)
+
+    suspend fun getOpenBatchDueAt(ruleId: Long): Long? = smsLogDao.getOpenBatchDueAt(ruleId)
+
+    suspend fun getNextBatchDueAt(): Long? = smsLogDao.getNextBatchDueAt()
+
     suspend fun wasRecentlyForwarded(contentHash: String, since: Long): Boolean =
         contentHash.isNotEmpty() && smsLogDao.countRecentWithHash(contentHash, since) > 0
 

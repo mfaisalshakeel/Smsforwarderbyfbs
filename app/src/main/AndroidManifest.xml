@@ -8,8 +8,19 @@
     <!-- SEND_SMS is only needed for rules whose destination is another phone number. -->
     <uses-permission android:name="android.permission.SEND_SMS" />
 
+    <!-- Picture messages are read back from the MMS provider; there is no usable broadcast
+         for an app that is not the default SMS handler. -->
+    <uses-permission android:name="android.permission.RECEIVE_MMS" />
+
     <!-- Dual SIM & Phone State -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
+    <!-- Missed calls: the number and contact name are only available from the call log
+         on Android 10 and above. Only needed for rules that forward missed calls. -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <!-- App lock -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- Google Accounts on Device -->
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
@@ -61,6 +72,16 @@
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter android:priority="1000">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Detects a missed call by watching the phone-state transitions -->
+        <receiver
+            android:name=".receiver.CallReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.PHONE_STATE" />
             </intent-filter>
         </receiver>
 

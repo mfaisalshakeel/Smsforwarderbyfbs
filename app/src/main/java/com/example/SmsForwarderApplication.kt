@@ -2,6 +2,7 @@ package com.example
 
 import android.app.Application
 import com.example.data.local.AppDatabase
+import com.example.data.preferences.EngineStateStore
 import com.example.data.preferences.SettingsRepository
 import com.example.data.repository.ForwardingRuleRepository
 import com.example.data.repository.SmsLogRepository
@@ -30,6 +31,9 @@ class SmsForwarderApplication : Application() {
     lateinit var settingsRepository: SettingsRepository
         private set
 
+    lateinit var engineStateStore: EngineStateStore
+        private set
+
     lateinit var notificationHelper: NotificationHelper
         private set
 
@@ -43,13 +47,15 @@ class SmsForwarderApplication : Application() {
         smsLogRepository = SmsLogRepository(database.smsLogDao())
         ruleRepository = ForwardingRuleRepository(database.forwardingRuleDao())
         settingsRepository = SettingsRepository(this)
+        engineStateStore = EngineStateStore(this)
         notificationHelper = NotificationHelper(this)
         forwardingManager = ForwardingManager(
             context = this,
             settingsRepository = settingsRepository,
             ruleRepository = ruleRepository,
             smsLogRepository = smsLogRepository,
-            notificationHelper = notificationHelper
+            notificationHelper = notificationHelper,
+            engineStateStore = engineStateStore
         )
 
         val settings = settingsRepository.getSettings()

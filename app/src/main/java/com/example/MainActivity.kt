@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -67,13 +66,16 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.AboutPenduCoderDialog
+import com.example.ui.components.AutostartHelpDialog
 import com.example.ui.components.SetupStep
 import com.example.ui.components.StatusDot
 import com.example.ui.components.Tone
 import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.LockScreen
 import com.example.ui.screens.LogsScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.RulesScreen
@@ -82,6 +84,8 @@ import com.example.ui.screens.SimulatorScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.Spacing
 import com.example.util.BackupManager
+import com.example.util.BiometricHelper
+import com.example.util.HealthAction
 import com.example.util.PowerHelper
 import com.example.ui.viewmodel.MainViewModel
 
@@ -97,7 +101,7 @@ enum class AppTab(
     SIMULATOR(R.string.nav_simulator, R.string.title_simulator, Icons.Default.Science)
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
@@ -129,12 +133,18 @@ fun MainApp(viewModel: MainViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
-    val activity = context as? ComponentActivity
+    val activity = context as? FragmentActivity
 
     // Saved across rotation; the tab used to reset to Home on every configuration change.
     var currentTabIndex by rememberSaveable { mutableIntStateOf(AppTab.DASHBOARD.ordinal) }
     val currentTab = AppTab.entries[currentTabIndex]
     var showAboutDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Deliberately not saveable: leaving the app must re-lock it, and a process restart
+    // must not come back already unlocked.
+    var isUnlocked by remember { mutableStateOf(false) }
+    var lockError by remember { mutableStateOf<String?>(null) }
+    var showAutostartHelp by rememberSaveable { mutableStateOf(false) }
 
     val settings by viewModel.settingsState.collectAsStateWithLifecycle()
     val permissions by viewModel.permissionsState.collectAsStateWithLifecycle()
@@ -160,6 +170,9 @@ fun MainApp(viewModel: MainViewModel) {
             },
             hasPhoneState = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED,
+            hasCallLog = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.READ_CALL_LOG
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
@@ -189,12 +202,53 @@ fun MainApp(viewModel: MainViewModel) {
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
-                refreshPermissions()
+            when (event) {
+                Lifecycle.Event.ON_RESUME, Lifecycle.Event.ON_START -> refreshPermissions()
+                // Re-lock as soon as the app leaves the foreground.
+                Lifecycle.Event.ON_STOP -> isUnlocked = false
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val keyguardLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            isUnlocked = true
+            lockError = null
+        }
+    }
+
+    fun requestUnlock() {
+        val host = activity ?: return
+        lockError = null
+        BiometricHelper.authenticate(
+            activity = host,
+            title = "Unlock SMS Forwarder",
+            subtitle = "Your message history is protected",
+            onSuccess = {
+                isUnlocked = true
+                lockError = null
+            },
+            onFailed = { reason ->
+                // Older devices cannot offer the PIN inside the prompt; fall back to the keyguard.
+                val fallback = BiometricHelper.deviceCredentialIntent(
+                    host,
+                    "Unlock SMS Forwarder",
+                    "Enter your device PIN, pattern or password"
+                )
+                if (fallback != null) {
+                    runCatching { keyguardLauncher.launch(fallback) }
+                        .onFailure { lockError = reason }
+                } else {
+                    lockError = reason
+                }
+            },
+            onCancelled = { lockError = null }
+        )
     }
 
     LaunchedEffect(message) {
@@ -239,17 +293,7 @@ fun MainApp(viewModel: MainViewModel) {
         hasNotificationAccess = permissions.hasNotificationAccess,
         isBatteryOptimised = permissions.isBatteryOptimised,
         hasAccount = settings.isSenderAccountConfigured,
-        onRequestPermissions = {
-            permissionLauncher.launch(
-                buildList {
-                    add(Manifest.permission.RECEIVE_SMS)
-                    add(Manifest.permission.READ_PHONE_STATE)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        add(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                }.toTypedArray()
-            )
-        },
+        onRequestPermissions = { requestCorePermissions(permissionLauncher) },
         onOpenNotificationAccess = {
             runCatching { genericLauncher.launch(PowerHelper.notificationAccessIntent()) }
         },
@@ -261,6 +305,29 @@ fun MainApp(viewModel: MainViewModel) {
         onOpenSetup = { currentTabIndex = AppTab.SETTINGS.ordinal }
     )
 
+    fun handleHealthAction(action: HealthAction) {
+        when (action) {
+            HealthAction.ENABLE_ENGINE -> viewModel.toggleMasterSwitch(true)
+            HealthAction.RESTART_ENGINE -> viewModel.restartEngine()
+            HealthAction.GRANT_SMS_PERMISSION -> requestCorePermissions(permissionLauncher)
+            HealthAction.GRANT_CALL_LOG ->
+                permissionLauncher.launch(arrayOf(Manifest.permission.READ_CALL_LOG))
+            HealthAction.GRANT_NOTIFICATION_ACCESS ->
+                runCatching { genericLauncher.launch(PowerHelper.notificationAccessIntent()) }
+            HealthAction.FIX_BATTERY -> {
+                val intent = PowerHelper.buildExemptionIntent(context)
+                    ?: PowerHelper.batterySettingsIntent()
+                runCatching { genericLauncher.launch(intent) }
+                    .onFailure { runCatching { genericLauncher.launch(PowerHelper.batterySettingsIntent()) } }
+            }
+            HealthAction.ENABLE_APP_NOTIFICATIONS ->
+                runCatching { genericLauncher.launch(PowerHelper.appNotificationSettingsIntent(context)) }
+            HealthAction.OPEN_SETUP -> currentTabIndex = AppTab.SETTINGS.ordinal
+            HealthAction.CREATE_RULE -> currentTabIndex = AppTab.RULES.ordinal
+            HealthAction.OPEN_AUTOSTART_HELP -> showAutostartHelp = true
+        }
+    }
+
     // ---------------------------------------------------------------- onboarding
 
     if (!settings.onboardingCompleted) {
@@ -268,6 +335,13 @@ fun MainApp(viewModel: MainViewModel) {
             setupSteps = setupSteps,
             onFinish = viewModel::completeOnboarding
         )
+        return
+    }
+
+    if (settings.appLockEnabled && !isUnlocked) {
+        // Offer the prompt straight away rather than making the user tap twice.
+        LaunchedEffect(Unit) { requestUnlock() }
+        LockScreen(onUnlock = { requestUnlock() }, errorMessage = lockError)
         return
     }
 
@@ -385,6 +459,7 @@ fun MainApp(viewModel: MainViewModel) {
                         AppTab.DASHBOARD -> DashboardScreen(
                             viewModel = viewModel,
                             setupSteps = setupSteps,
+                            onHealthAction = { handleHealthAction(it) },
                             onNavigateToRules = { currentTabIndex = AppTab.RULES.ordinal },
                             onNavigateToLogs = { currentTabIndex = AppTab.LOGS.ordinal },
                             onNavigateToSettings = { currentTabIndex = AppTab.SETTINGS.ordinal },
@@ -437,6 +512,32 @@ fun MainApp(viewModel: MainViewModel) {
     if (showAboutDialog) {
         AboutPenduCoderDialog(onDismiss = { showAboutDialog = false })
     }
+
+    if (showAutostartHelp) {
+        AutostartHelpDialog(
+            onOpenSettings = {
+                runCatching { genericLauncher.launch(PowerHelper.appSettingsIntent(context)) }
+                showAutostartHelp = false
+            },
+            onDismiss = { showAutostartHelp = false }
+        )
+    }
+}
+
+/** The permissions the engine cannot work without, requested as one batch. */
+private fun requestCorePermissions(
+    launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>
+) {
+    launcher.launch(
+        buildList {
+            add(Manifest.permission.RECEIVE_SMS)
+            add(Manifest.permission.READ_SMS)
+            add(Manifest.permission.READ_PHONE_STATE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }.toTypedArray()
+    )
 }
 
 /** Writes an export the user has just chosen a location for. */

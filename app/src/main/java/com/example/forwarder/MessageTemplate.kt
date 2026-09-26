@@ -4,6 +4,22 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** The kinds of event the app can forward. */
+object MessageSource {
+    const val SMS = "SMS"
+    const val MMS = "MMS"
+    const val NOTIFICATION = "NOTIFICATION"
+    const val CALL = "CALL"
+
+    /** Label shown in the history list and the log detail sheet. */
+    fun label(source: String): String = when (source) {
+        MMS -> "Picture message"
+        NOTIFICATION -> "App notification"
+        CALL -> "Missed call"
+        else -> "Text message"
+    }
+}
+
 /** Everything a template or a default message body can refer to. */
 data class MessageContext(
     val sender: String,
@@ -16,9 +32,14 @@ data class MessageContext(
     val appName: String = "",
     val packageName: String = "",
     val title: String = "",
-    val ruleName: String = ""
+    val ruleName: String = "",
+    /** Number of attachments on an MMS, or 0. */
+    val attachmentCount: Int = 0
 ) {
-    val isNotification: Boolean get() = source == "NOTIFICATION"
+    val isSms: Boolean get() = source == MessageSource.SMS
+    val isMms: Boolean get() = source == MessageSource.MMS
+    val isNotification: Boolean get() = source == MessageSource.NOTIFICATION
+    val isCall: Boolean get() = source == MessageSource.CALL
 }
 
 /**
@@ -59,11 +80,14 @@ object MessageTemplate {
     /** Subject line used when the rule has no custom template. */
     fun defaultSubject(ctx: MessageContext): String {
         val simPrefix = if (ctx.simSlot > 0) "[${ctx.simName.ifBlank { "SIM ${ctx.simSlot}" }}] " else ""
-        return if (ctx.isNotification) {
-            val title = ctx.title.ifBlank { "New notification" }
-            "$simPrefix[${ctx.appName.ifBlank { ctx.sender }}] $title"
-        } else {
-            "$simPrefix[SMS] ${ctx.sender}"
+        return when {
+            ctx.isNotification -> {
+                val title = ctx.title.ifBlank { "New notification" }
+                "$simPrefix[${ctx.appName.ifBlank { ctx.sender }}] $title"
+            }
+            ctx.isCall -> "$simPrefix[Missed call] ${ctx.sender}"
+            ctx.isMms -> "$simPrefix[MMS] ${ctx.sender}"
+            else -> "$simPrefix[SMS] ${ctx.sender}"
         }
     }
 
@@ -78,9 +102,19 @@ object MessageTemplate {
             append('\n')
             if (ctx.title.isNotBlank()) append("Title: ").append(ctx.title).append('\n')
         } else {
-            append("Incoming SMS").append('\n')
+            append(
+                when {
+                    ctx.isCall -> "Missed call"
+                    ctx.isMms -> "Incoming picture message"
+                    else -> "Incoming SMS"
+                }
+            ).append('\n')
             append(divider).append('\n')
             append("From: ").append(ctx.sender).append('\n')
+            if (ctx.isMms && ctx.attachmentCount > 0) {
+                append("Attachments: ").append(ctx.attachmentCount)
+                    .append(" (not included in this message)").append('\n')
+            }
             if (ctx.simSlot > 0) {
                 append("SIM: ").append(ctx.simName.ifBlank { "SIM ${ctx.simSlot}" }).append('\n')
             }
@@ -98,14 +132,60 @@ object MessageTemplate {
 
     /** Compact single-message body for SMS, Telegram and webhook destinations. */
     fun compactBody(ctx: MessageContext): String = buildString {
-        if (ctx.isNotification) {
-            append('[').append(ctx.appName.ifBlank { ctx.sender }).append("] ")
-            if (ctx.title.isNotBlank()) append(ctx.title).append(": ")
-        } else {
-            append("SMS from ").append(ctx.sender)
-            if (ctx.simSlot > 0) append(" (").append(ctx.simName.ifBlank { "SIM ${ctx.simSlot}" }).append(')')
-            append('\n')
+        when {
+            ctx.isNotification -> {
+                append('[').append(ctx.appName.ifBlank { ctx.sender }).append("] ")
+                if (ctx.title.isNotBlank()) append(ctx.title).append(": ")
+            }
+            ctx.isCall -> {
+                append("Missed call from ").append(ctx.sender)
+                if (ctx.simSlot > 0) append(" (").append(ctx.simName.ifBlank { "SIM ${ctx.simSlot}" }).append(')')
+                append('\n')
+            }
+            else -> {
+                append(if (ctx.isMms) "MMS from " else "SMS from ").append(ctx.sender)
+                if (ctx.simSlot > 0) append(" (").append(ctx.simName.ifBlank { "SIM ${ctx.simSlot}" }).append(')')
+                append('\n')
+            }
         }
         append(ctx.body)
     }
+
+    /** Subject for a batch of messages collected by a digest rule. */
+    fun digestSubject(ruleName: String, count: Int): String =
+        "[Digest] $count message${if (count == 1) "" else "s"} - $ruleName"
+
+    /**
+     * One combined message for a digest rule, newest last so it reads in the order the
+     * messages arrived.
+     */
+    fun digestBody(
+        ruleName: String,
+        entries: List<DigestEntry>,
+        includeBranding: Boolean
+    ): String = buildString {
+        val divider = "------------------------------"
+        append(entries.size).append(" message").append(if (entries.size == 1) "" else "s")
+            .append(" collected by \"").append(ruleName).append("\"").append('\n')
+        append(divider).append('\n')
+        entries.forEachIndexed { index, entry ->
+            append('\n').append(index + 1).append(". ")
+            append(MessageSource.label(entry.source)).append(" from ").append(entry.sender).append('\n')
+            append("   ").append(formatTime(entry.receivedAt)).append('\n')
+            entry.body.lineSequence().forEach { line -> append("   ").append(line).append('\n') }
+        }
+        append('\n').append(divider).append('\n')
+        append("Forwarded automatically by SMS & Notification Forwarder.")
+        if (includeBranding) {
+            append('\n').append("Developed by PenduCoder - https://penducoder.com")
+        }
+    }
+
+    /** One collected message inside a digest. */
+    data class DigestEntry(
+        val sender: String,
+        val body: String,
+        val receivedAt: Long,
+        val source: String
+    )
 }

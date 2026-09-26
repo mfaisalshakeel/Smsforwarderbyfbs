@@ -82,8 +82,9 @@ object RuleMatcher {
         minuteOfDay: Int,
         isoDay: Int
     ): Decision {
-        if (ctx.isNotification && !rule.forwardNotifications) return Decision.Skip("Rule ignores notifications")
-        if (!ctx.isNotification && !rule.forwardSms) return Decision.Skip("Rule ignores SMS")
+        if (!rule.acceptsSource(ctx.source)) {
+            return Decision.Skip("Rule does not watch ${MessageSource.label(ctx.source).lowercase()}s")
+        }
 
         if (ctx.isNotification && !matchesApp(ctx.packageName, rule)) {
             return Decision.Skip("App not selected in this rule")
@@ -112,11 +113,14 @@ object RuleMatcher {
             return Decision.Skip("Sender does not match this rule's filter")
         }
 
-        if (isExcluded(ctx.body, rule.contentExcludeValue)) {
-            return Decision.Skip("Message contains an excluded keyword")
-        }
-        if (!matchesValue(ctx.body, rule.contentFilterType, rule.contentFilterValue)) {
-            return Decision.Skip("Message does not contain this rule's keywords")
+        // A missed call carries no text, so a keyword filter would silently drop every one.
+        if (!ctx.isCall) {
+            if (isExcluded(ctx.body, rule.contentExcludeValue)) {
+                return Decision.Skip("Message contains an excluded keyword")
+            }
+            if (!matchesValue(ctx.body, rule.contentFilterType, rule.contentFilterValue)) {
+                return Decision.Skip("Message does not contain this rule's keywords")
+            }
         }
 
         return Decision.Match

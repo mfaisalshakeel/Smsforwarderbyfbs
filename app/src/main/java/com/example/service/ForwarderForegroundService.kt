@@ -10,11 +10,15 @@ import android.util.Log
 import androidx.core.app.ServiceCompat
 import com.example.R
 import com.example.SmsForwarderApplication
+import com.example.data.preferences.EngineState
+import com.example.data.preferences.EngineStateStore
 import com.example.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -27,6 +31,8 @@ class ForwarderForegroundService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var notificationHelper: NotificationHelper
+    private var mmsWatcher: MmsWatcher? = null
+    private lateinit var engineStateStore: EngineStateStore
 
     override fun onCreate() {
         super.onCreate()
@@ -36,8 +42,22 @@ class ForwarderForegroundService : Service() {
             return
         }
         notificationHelper = app.notificationHelper
+        engineStateStore = app.engineStateStore
+        engineStateStore.recordServiceStarted()
 
         startInForeground(getString(R.string.service_status_starting))
+
+        // A regular heartbeat is the only honest way to know the process is still alive:
+        // when Android kills it, onDestroy is never called and the running flag would lie.
+        serviceScope.launch {
+            while (isActive) {
+                delay(EngineState.HEARTBEAT_INTERVAL_MILLIS)
+                engineStateStore.recordHeartbeat()
+            }
+        }
+
+        // MMS has no usable broadcast for a non-default SMS app, so it is watched from here.
+        mmsWatcher = MmsWatcher(applicationContext).also { it.start() }
 
         // Keep the notification text in step with the engine's actual state.
         serviceScope.launch {
@@ -81,6 +101,11 @@ class ForwarderForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        if (::engineStateStore.isInitialized) {
+            engineStateStore.recordServiceStopped("Service destroyed by the system")
+        }
+        mmsWatcher?.stop()
+        mmsWatcher = null
         serviceScope.cancel()
         super.onDestroy()
     }

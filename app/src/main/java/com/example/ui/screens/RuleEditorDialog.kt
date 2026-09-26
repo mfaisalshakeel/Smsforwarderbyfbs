@@ -86,6 +86,10 @@ fun RuleEditorDialog(
     var telegramToken by rememberSaveable { mutableStateOf(initialRule?.telegramBotToken.orEmpty()) }
 
     var forwardSms by rememberSaveable { mutableStateOf(initialRule?.forwardSms ?: true) }
+    var forwardMms by rememberSaveable { mutableStateOf(initialRule?.forwardMms ?: false) }
+    var forwardMissedCalls by rememberSaveable {
+        mutableStateOf(initialRule?.forwardMissedCalls ?: false)
+    }
     var forwardNotifications by rememberSaveable {
         mutableStateOf(initialRule?.forwardNotifications ?: false)
     }
@@ -110,6 +114,10 @@ fun RuleEditorDialog(
         mutableStateOf(initialRule?.scheduleDays ?: "1,2,3,4,5,6,7")
     }
 
+    var digestEnabled by rememberSaveable { mutableStateOf(initialRule?.digestEnabled ?: false) }
+    var digestInterval by rememberSaveable {
+        mutableIntStateOf(initialRule?.digestIntervalMinutes ?: 60)
+    }
     var useCustomTemplate by rememberSaveable { mutableStateOf(initialRule?.useCustomTemplate ?: false) }
     var subjectTemplate by rememberSaveable { mutableStateOf(initialRule?.subjectTemplate.orEmpty()) }
     var bodyTemplate by rememberSaveable { mutableStateOf(initialRule?.bodyTemplate.orEmpty()) }
@@ -121,7 +129,7 @@ fun RuleEditorDialog(
     val targetValue = if (destinationType == DestinationType.EMAIL) emailTargets else otherTarget
     val canContinueFromStep1 = targetValue.isNotBlank() &&
         (destinationType != DestinationType.TELEGRAM || telegramToken.isNotBlank())
-    val canContinueFromStep2 = forwardSms || forwardNotifications
+    val canContinueFromStep2 = forwardSms || forwardMms || forwardNotifications || forwardMissedCalls
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -283,10 +291,22 @@ fun RuleEditorDialog(
                             Spacer(modifier = Modifier.size(Spacing.sm))
 
                             SettingSwitchRow(
-                                title = "Incoming text messages",
+                                title = "Text messages (SMS)",
                                 subtitle = "Forward SMS as they arrive",
                                 checked = forwardSms,
                                 onCheckedChange = { forwardSms = it }
+                            )
+                            SettingSwitchRow(
+                                title = "Picture messages (MMS)",
+                                subtitle = "Forwards the text; attachments are reported by count",
+                                checked = forwardMms,
+                                onCheckedChange = { forwardMms = it }
+                            )
+                            SettingSwitchRow(
+                                title = "Missed calls",
+                                subtitle = "Forward the caller's number when you miss a call",
+                                checked = forwardMissedCalls,
+                                onCheckedChange = { forwardMissedCalls = it }
                             )
                             SettingSwitchRow(
                                 title = "App notifications",
@@ -454,6 +474,40 @@ fun RuleEditorDialog(
                             Spacer(modifier = Modifier.size(Spacing.lg))
 
                             SettingSwitchRow(
+                                title = "Combine into a digest",
+                                subtitle = "Collect matches and send them as one message " +
+                                    "instead of one each",
+                                checked = digestEnabled,
+                                onCheckedChange = { digestEnabled = it }
+                            )
+                            if (digestEnabled) {
+                                Spacer(modifier = Modifier.size(Spacing.xs))
+                                FieldLabel(
+                                    text = "Send every",
+                                    helper = "Messages that arrive in the same window go out together."
+                                )
+                                Spacer(modifier = Modifier.size(Spacing.xs))
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                    listOf(
+                                        15 to "15 min",
+                                        30 to "30 min",
+                                        60 to "1 hour",
+                                        240 to "4 hours",
+                                        720 to "12 hours",
+                                        1440 to "1 day"
+                                    ).forEach { (minutes, label) ->
+                                        FilterChip(
+                                            selected = digestInterval == minutes,
+                                            onClick = { digestInterval = minutes },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.size(Spacing.lg))
+
+                            SettingSwitchRow(
                                 title = "Custom message format",
                                 subtitle = "Write your own subject and body",
                                 checked = useCustomTemplate,
@@ -542,6 +596,8 @@ fun RuleEditorDialog(
                                         webhookHeaders = webhookHeaders.trim(),
                                         telegramBotToken = telegramToken.trim(),
                                         forwardSms = forwardSms,
+                                        forwardMms = forwardMms,
+                                        forwardMissedCalls = forwardMissedCalls,
                                         forwardNotifications = forwardNotifications,
                                         appPackages = appPackages,
                                         simSlot = simSlot,
@@ -558,6 +614,8 @@ fun RuleEditorDialog(
                                         useCustomTemplate = useCustomTemplate,
                                         subjectTemplate = subjectTemplate.trim(),
                                         bodyTemplate = bodyTemplate.trim(),
+                                        digestEnabled = digestEnabled,
+                                        digestIntervalMinutes = digestInterval,
                                         createdAt = initialRule?.createdAt ?: System.currentTimeMillis()
                                     )
                                 )

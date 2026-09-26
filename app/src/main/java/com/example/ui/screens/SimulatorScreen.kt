@@ -94,6 +94,16 @@ fun SimulatorScreen(
                         label = { Text("Text message") }
                     )
                     FilterChip(
+                        selected = mode == MODE_MMS,
+                        onClick = { mode = MODE_MMS },
+                        label = { Text("Picture message") }
+                    )
+                    FilterChip(
+                        selected = mode == MODE_CALL,
+                        onClick = { mode = MODE_CALL },
+                        label = { Text("Missed call") }
+                    )
+                    FilterChip(
                         selected = mode == MODE_NOTIFICATION,
                         onClick = { mode = MODE_NOTIFICATION },
                         label = { Text("App notification") }
@@ -102,18 +112,18 @@ fun SimulatorScreen(
 
                 Spacer(modifier = Modifier.size(Spacing.md))
 
-                if (mode == MODE_SMS) {
+                if (mode == MODE_SMS || mode == MODE_MMS || mode == MODE_CALL) {
                     OutlinedTextField(
                         value = sender,
                         onValueChange = { sender = it },
-                        label = { Text("From") },
+                        label = { Text(if (mode == MODE_CALL) "Caller" else "From") },
                         singleLine = true,
                         shape = Shapes.field,
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("simulator_sender_input")
                     )
-                    if (availableSims.size > 1) {
+                    if (mode == MODE_SMS && availableSims.size > 1) {
                         Spacer(modifier = Modifier.size(Spacing.sm))
                         FieldLabel(text = "Arrived on")
                         Spacer(modifier = Modifier.size(Spacing.xs))
@@ -164,16 +174,18 @@ fun SimulatorScreen(
 
                 Spacer(modifier = Modifier.size(Spacing.sm))
 
-                OutlinedTextField(
-                    value = body,
-                    onValueChange = { body = it },
-                    label = { Text("Message text") },
-                    minLines = 3,
-                    shape = Shapes.field,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("simulator_body_input")
-                )
+                if (mode != MODE_CALL) {
+                    OutlinedTextField(
+                        value = body,
+                        onValueChange = { body = it },
+                        label = { Text("Message text") },
+                        minLines = 3,
+                        shape = Shapes.field,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("simulator_body_input")
+                    )
+                }
 
                 Spacer(modifier = Modifier.size(Spacing.md))
 
@@ -182,13 +194,16 @@ fun SimulatorScreen(
                 } else {
                     Button(
                         onClick = {
-                            if (mode == MODE_SMS) {
-                                viewModel.simulateIncomingSms(sender, body, simSlot)
-                            } else {
-                                viewModel.simulateIncomingNotification(appName, packageName, title, body)
+                            when (mode) {
+                                MODE_SMS -> viewModel.simulateIncomingSms(sender, body, simSlot)
+                                MODE_MMS -> viewModel.simulateIncomingMms(sender, body)
+                                MODE_CALL -> viewModel.simulateMissedCall(sender)
+                                else -> viewModel.simulateIncomingNotification(
+                                    appName, packageName, title, body
+                                )
                             }
                         },
-                        enabled = body.isNotBlank(),
+                        enabled = if (mode == MODE_CALL) sender.isNotBlank() else body.isNotBlank(),
                         shape = Shapes.button,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -234,4 +249,6 @@ fun SimulatorScreen(
 }
 
 private const val MODE_SMS = "SMS"
+private const val MODE_MMS = "MMS"
+private const val MODE_CALL = "CALL"
 private const val MODE_NOTIFICATION = "NOTIFICATION"

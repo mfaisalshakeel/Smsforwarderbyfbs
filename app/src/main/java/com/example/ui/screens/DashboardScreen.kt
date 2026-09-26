@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.entity.SmsLogEntity
 import com.example.ui.components.AppCard
+import com.example.ui.components.BackgroundDiagnosticsCard
+import com.example.ui.components.BackgroundHealthCard
 import com.example.ui.components.ContentContainer
 import com.example.ui.components.EmptyState
 import com.example.ui.components.LogDetailDialog
@@ -49,11 +52,13 @@ import com.example.ui.components.Tone
 import com.example.ui.theme.Shapes
 import com.example.ui.theme.Spacing
 import com.example.ui.viewmodel.MainViewModel
+import com.example.util.HealthAction
 
 @Composable
 fun DashboardScreen(
     viewModel: MainViewModel,
     setupSteps: List<SetupStep>,
+    onHealthAction: (HealthAction) -> Unit,
     onNavigateToRules: () -> Unit,
     onNavigateToLogs: () -> Unit,
     onNavigateToSettings: () -> Unit,
@@ -64,8 +69,12 @@ fun DashboardScreen(
     val stats by viewModel.statsState.collectAsStateWithLifecycle()
     val recentLogs by viewModel.recentLogs.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
+    val health by viewModel.backgroundHealth.collectAsStateWithLifecycle()
+    val engineState by viewModel.engineState.collectAsStateWithLifecycle()
+    val now by viewModel.clock.collectAsStateWithLifecycle()
 
     var selectedLog by remember { mutableStateOf<SmsLogEntity?>(null) }
+    var showDiagnostics by rememberSaveable { mutableStateOf(false) }
 
     val setupIncomplete = setupSteps.any { it.isRequired && !it.isComplete } ||
         !settings.isSenderAccountConfigured
@@ -82,6 +91,26 @@ fun DashboardScreen(
             )
         ) {
             item {
+                BackgroundHealthCard(
+                    health = health,
+                    now = now,
+                    onAction = onHealthAction,
+                    onOpenDiagnostics = { showDiagnostics = !showDiagnostics }
+                )
+            }
+
+            if (showDiagnostics) {
+                item {
+                    BackgroundDiagnosticsCard(
+                        health = health,
+                        now = now,
+                        serviceRunning = engineState.serviceRunning,
+                        lastStopReason = engineState.lastStopReason
+                    )
+                }
+            }
+
+            item {
                 EngineCard(
                     isEnabled = settings.isForwarderEnabled,
                     isConfigured = settings.isSenderAccountConfigured,
@@ -90,7 +119,7 @@ fun DashboardScreen(
                 )
             }
 
-            if (setupIncomplete) {
+            if (setupIncomplete && health.isWorking) {
                 item {
                     SetupChecklistCard(steps = setupSteps)
                 }

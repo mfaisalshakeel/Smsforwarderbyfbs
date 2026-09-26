@@ -104,9 +104,51 @@ blockers, the functional bugs, the missing destinations and the UI foundation.
   `MessageTemplate` and `BackupManager`, including regression tests for the reverse-match,
   dot-stuffing and header-injection bugs.
 
-### Not done
+### Background health monitoring — the app now tells you the truth
 
-* App lock (PIN / biometric), MMS, missed-call forwarding and digest/batching remain open —
-  see `ISSUES.md` items 4.8, 4.11, 4.12 and 4.13.
+A switch being on proves nothing: Android kills background apps silently, and the old app had
+no way to notice or to say so. The engine now reports on itself.
+
+* The foreground service **checks in every 10 minutes** and the app records what the engine has
+  really been doing: last check-in, last message seen, last message forwarded, last restart
+  after a reboot, and why the service last stopped (`EngineStateStore`).
+* A **health card sits at the top of the dashboard** with one of three verdicts — *working*,
+  *may stop*, or **NOT working** — plus the line "last message forwarded 4 minutes ago" so the
+  claim is backed by a fact rather than a setting.
+* `BackgroundHealthChecker` names every reason forwarding can fail and attaches a button that
+  fixes it: engine switched off, no SMS permission, no sending account, no active rules, the
+  service not running, a **stale heartbeat** (the flag says running but the process was killed),
+  notifications blocked for the app, battery optimisation, OEM autostart, missing notification
+  access or call-log permission, and messages waiting in the retry queue.
+* A **"See background details"** panel shows the raw timestamps, so a sceptical user can check
+  for themselves instead of taking the app's word for it.
+* **Per-manufacturer autostart instructions** for Xiaomi, Redmi, Poco, Oppo, Realme, Vivo,
+  iQOO, Huawei, Honor, OnePlus and Samsung, since each hides the switch somewhere different.
+* Permission gaps are only reported when a rule actually needs them — notification access is
+  not a problem if no rule forwards notifications.
+
+### The four remaining features
+
+* **App lock** (4.11) — fingerprint, face or device PIN via `BiometricPrompt`, with a keyguard
+  fallback on older devices. Locks again the moment the app leaves the foreground, and the
+  unlocked flag is deliberately not saved across process death.
+* **Missed calls** (4.12) — `CallReceiver` infers a missed call from the RINGING → IDLE
+  transition with no OFFHOOK, then reads the number and contact name back from the call log,
+  which is the only reliable source since Android 10. Keyword filters are skipped for calls,
+  which carry no text.
+* **MMS** (4.13) — `WAP_PUSH_DELIVER` only reaches the default SMS app, so `MmsWatcher` observes
+  the MMS provider instead and reads each new message once Android has assembled it. The text
+  is forwarded; attachments are reported by count.
+* **Digest / batching** (4.8) — a rule can collect its matches and send them as one combined
+  message every 15 minutes to 1 day. Messages arriving in the same window join the open batch
+  rather than starting a new one, and `DigestWorker` reschedules itself for the next batch
+  instead of polling.
+
+Schema v4 adds `forwardMms`, `forwardMissedCalls`, `digestEnabled` and `digestIntervalMinutes`
+to rules, plus the `BATCHED` log status. Both new sources default to off, so existing rules
+behave exactly as before.
+
+### Still not done
+
 * `GoogleSignIn` is still the deprecated API; migrating to Credential Manager +
-  `AuthorizationClient` is item 2.14 and is a separate piece of work.
+  `AuthorizationClient` is `ISSUES.md` item 2.14 and is a separate piece of work.

@@ -19,6 +19,8 @@ class RuleMatcherTest {
         contentExclude: String = "",
         packages: String = "",
         forwardSms: Boolean = true,
+        forwardMms: Boolean = true,
+        forwardMissedCalls: Boolean = true,
         forwardNotifications: Boolean = true,
         simSlot: Int = 0,
         scheduleEnabled: Boolean = false,
@@ -37,6 +39,8 @@ class RuleMatcherTest {
         contentExcludeValue = contentExclude,
         appPackages = packages,
         forwardSms = forwardSms,
+        forwardMms = forwardMms,
+        forwardMissedCalls = forwardMissedCalls,
         forwardNotifications = forwardNotifications,
         simSlot = simSlot,
         scheduleEnabled = scheduleEnabled,
@@ -167,6 +171,54 @@ class RuleMatcherTest {
             isoDay = 3
         )
         assertTrue(decision is RuleMatcher.Decision.Skip)
+    }
+
+    @Test
+    fun `a missed call is skipped unless the rule asks for one`() {
+        val callCtx = MessageContext(
+            sender = "+923001234567", body = "Missed call", timestamp = 0L,
+            source = MessageSource.CALL
+        )
+        assertTrue(
+            RuleMatcher.evaluate(rule(forwardMissedCalls = false), callCtx, 600, 3)
+                is RuleMatcher.Decision.Skip
+        )
+        assertEquals(
+            RuleMatcher.Decision.Match,
+            RuleMatcher.evaluate(rule(forwardMissedCalls = true), callCtx, 600, 3)
+        )
+    }
+
+    /** A call carries no text, so a keyword filter would otherwise drop every one. */
+    @Test
+    fun `a keyword filter does not apply to missed calls`() {
+        val callCtx = MessageContext(
+            sender = "+923001234567", body = "Missed call", timestamp = 0L,
+            source = MessageSource.CALL
+        )
+        assertEquals(
+            RuleMatcher.Decision.Match,
+            RuleMatcher.evaluate(
+                rule(contentType = MatchType.CONTAINS, contentValue = "otp"),
+                callCtx, 600, 3
+            )
+        )
+    }
+
+    @Test
+    fun `an mms is skipped unless the rule asks for one`() {
+        val mmsCtx = MessageContext(
+            sender = "+923001234567", body = "Look at this", timestamp = 0L,
+            source = MessageSource.MMS
+        )
+        assertTrue(
+            RuleMatcher.evaluate(rule(forwardMms = false), mmsCtx, 600, 3)
+                is RuleMatcher.Decision.Skip
+        )
+        assertEquals(
+            RuleMatcher.Decision.Match,
+            RuleMatcher.evaluate(rule(forwardMms = true), mmsCtx, 600, 3)
+        )
     }
 
     @Test

@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 object ForwardScheduler {
 
     private const val RETRY_WORK_NAME = "sms_forwarder_retry"
+    private const val DIGEST_WORK_NAME = "sms_forwarder_digest"
 
     /** Exponential backoff, capped so a long outage does not push the next try hours away. */
     fun backoffMillis(attempt: Int): Long {
@@ -38,6 +39,29 @@ object ForwardScheduler {
             RETRY_WORK_NAME,
             // REPLACE so the soonest pending item decides when the queue next runs.
             ExistingWorkPolicy.REPLACE,
+            request
+        )
+    }
+
+    /**
+     * Schedules the digest pass. Uses KEEP rather than REPLACE so a later message joining an
+     * open batch does not push the already-scheduled send further out.
+     */
+    fun enqueueDigest(context: Context, delayMillis: Long, requireUnmeteredNetwork: Boolean) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(
+                if (requireUnmeteredNetwork) NetworkType.UNMETERED else NetworkType.CONNECTED
+            )
+            .build()
+
+        val request = OneTimeWorkRequestBuilder<DigestWorker>()
+            .setConstraints(constraints)
+            .setInitialDelay(delayMillis.coerceAtLeast(0L), TimeUnit.MILLISECONDS)
+            .build()
+
+        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+            DIGEST_WORK_NAME,
+            ExistingWorkPolicy.KEEP,
             request
         )
     }

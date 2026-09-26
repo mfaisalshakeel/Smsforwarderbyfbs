@@ -2,10 +2,12 @@
 
 > **Status:** most of this list has been fixed on branch `claude/lucid-bell-jxu2q3`.
 > See [`CHANGELOG.md`](CHANGELOG.md) for what changed and what is still open.
-> The remaining open items are **4.8** (digest/batching), **4.11** (app lock),
-> **4.12** (missed calls), **4.13** (MMS) and **2.14** (migrate off the deprecated
-> `GoogleSignIn` API). This document is kept as the original audit, unedited below,
-> so the fixes can be checked against it.
+> Items 4.8 (digest), 4.11 (app lock), 4.12 (missed calls) and 4.13 (MMS) are now done too.
+> The only item still open is **2.14** — migrating off the deprecated `GoogleSignIn` API.
+> Background health monitoring, which is not in the list below, was added on top: the app
+> now reports whether it is genuinely running in the background and why not.
+> This document is kept as the original audit, unedited below, so the fixes can be
+> checked against it.
 
 Audit date: 2026-09-25 · Branch: `claude/lucid-bell-jxu2q3` · Codebase: ~7,100 lines Kotlin (Compose + Room)
 
