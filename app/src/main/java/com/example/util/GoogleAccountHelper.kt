@@ -3,7 +3,6 @@ package com.example.util
 import android.accounts.AccountManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 
 object GoogleAccountHelper {

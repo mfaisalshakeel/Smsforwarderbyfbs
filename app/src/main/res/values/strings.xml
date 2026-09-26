@@ -1,32 +1,71 @@
 <resources>
     <string name="app_name">SMS Forwarder</string>
-    <string name="nav_dashboard">Dashboard</string>
-    <string name="nav_logs">Logs</string>
-    <string name="nav_settings">Settings</string>
-    <string name="nav_simulator">Simulator</string>
-    
+
+    <!-- Navigation -->
+    <string name="nav_dashboard">Home</string>
+    <string name="nav_rules">Rules</string>
+    <string name="nav_logs">History</string>
+    <string name="nav_settings">Setup</string>
+    <string name="nav_simulator">Test</string>
+
+    <!-- Titles -->
+    <string name="title_dashboard">SMS Forwarder</string>
+    <string name="title_rules">Forwarding rules</string>
+    <string name="title_logs">Forwarding history</string>
+    <string name="title_settings">Setup</string>
+    <string name="title_simulator">Test your setup</string>
+
+    <!-- Notification channels -->
+    <string name="channel_service_name">Forwarding service</string>
+    <string name="channel_service_desc">Keeps message forwarding running in the background.</string>
+    <string name="channel_alerts_name">Forwarding alerts</string>
+    <string name="channel_alerts_desc">Tells you when a message has been forwarded.</string>
+
+    <!-- Foreground service -->
+    <string name="service_notification_title">SMS Forwarder is running</string>
+    <string name="service_status_starting">Starting…</string>
+    <string name="service_status_active">Watching for messages</string>
+    <string name="service_status_paused">Forwarding is paused</string>
+    <string name="service_status_no_account">Connect an email account to start forwarding</string>
+
+    <!-- Alerts -->
+    <string name="notify_forwarded_title">Forwarded: %1$s</string>
+    <string name="notify_problem_title">Could not forward: %1$s</string>
+
     <!-- Status -->
-    <string name="status_active">Forwarding Active</string>
-    <string name="status_paused">Forwarding Paused</string>
-    <string name="status_permissions_missing">Permissions Required</string>
-    <string name="status_grant_now">Grant Permissions</string>
-    
+    <string name="status_active">Forwarding active</string>
+    <string name="status_paused">Forwarding paused</string>
+    <string name="status_setup_needed">Setup needed</string>
+
     <!-- Stats -->
-    <string name="stats_total">Total Received</string>
+    <string name="stats_total">Received</string>
     <string name="stats_success">Forwarded</string>
     <string name="stats_failed">Failed</string>
-    <string name="stats_destinations">Active Targets</string>
-    
-    <!-- Destinations -->
-    <string name="dest_phone">SMS / Phone</string>
-    <string name="dest_webhook">Webhook</string>
-    <string name="dest_email">Email</string>
-    
+    <string name="stats_queued">Queued</string>
+    <string name="stats_rules">Active rules</string>
+
     <!-- Permissions -->
-    <string name="perm_sms_receive_title">Receive SMS</string>
-    <string name="perm_sms_receive_desc">Required to detect incoming text messages and read their sender and content.</string>
+    <string name="perm_sms_receive_title">Read incoming SMS</string>
+    <string name="perm_sms_receive_desc">Needed to see text messages as they arrive.</string>
     <string name="perm_sms_send_title">Send SMS</string>
-    <string name="perm_sms_send_desc">Required to forward text messages to your target phone number.</string>
-    <string name="perm_notifications_title">Notifications</string>
-    <string name="perm_notifications_desc">Shows background status and alerts when messages are forwarded.</string>
+    <string name="perm_sms_send_desc">Only needed for rules that forward to another phone number.</string>
+    <string name="perm_notifications_title">Show notifications</string>
+    <string name="perm_notifications_desc">Lets the app tell you when a message was forwarded.</string>
+    <string name="perm_phone_state_title">Read phone state</string>
+    <string name="perm_phone_state_desc">Needed to tell which SIM a message arrived on.</string>
+    <string name="perm_notification_access_title">Notification access</string>
+    <string name="perm_notification_access_desc">Needed to forward notifications from other apps.</string>
+    <string name="perm_battery_title">Unrestricted battery</string>
+    <string name="perm_battery_desc">Stops Android from freezing the app and missing messages.</string>
+
+    <!-- Common actions -->
+    <string name="action_grant">Grant</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_retry">Try again</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_next">Next</string>
+    <string name="action_back">Back</string>
+    <string name="action_done">Done</string>
 </resources>

@@ -1,216 +1,131 @@
 package com.example.ui.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Http
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PhoneMissed
+import androidx.compose.material.icons.filled.RemoveCircle
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.data.local.entity.LogStatus
 import com.example.data.local.entity.SmsLogEntity
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.isSystemInDarkTheme
-import com.example.ui.theme.ErrorColorDark
-import com.example.ui.theme.ErrorColorLight
-import com.example.ui.theme.ErrorContainerDark
-import com.example.ui.theme.ErrorContainerLight
-import com.example.ui.theme.InfoColorDark
-import com.example.ui.theme.InfoColorLight
-import com.example.ui.theme.InfoContainerDark
-import com.example.ui.theme.InfoContainerLight
-import com.example.ui.theme.SuccessColorDark
-import com.example.ui.theme.SuccessColorLight
-import com.example.ui.theme.SuccessContainerDark
-import com.example.ui.theme.SuccessContainerLight
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import com.example.ui.theme.WarningColorDark
-import com.example.ui.theme.WarningColorLight
-import com.example.ui.theme.WarningContainerDark
-import com.example.ui.theme.WarningContainerLight
+import com.example.forwarder.MessageSource
+import com.example.ui.theme.Shapes
+import com.example.ui.theme.Spacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@Composable
-fun StatusBadge(status: String, modifier: Modifier = Modifier) {
-    val isDark = isSystemInDarkTheme()
-    val (bgColor, textColor, icon) = when (status.uppercase()) {
-        "SUCCESS" -> Triple(
-            if (isDark) SuccessContainerDark else SuccessContainerLight,
-            if (isDark) SuccessColorDark else SuccessColorLight,
-            Icons.Default.CheckCircle
-        )
-        "FAILED" -> Triple(
-            if (isDark) ErrorContainerDark else ErrorContainerLight,
-            if (isDark) ErrorColorDark else ErrorColorLight,
-            Icons.Default.Error
-        )
-        "SKIPPED" -> Triple(
-            if (isDark) WarningContainerDark else WarningContainerLight,
-            if (isDark) WarningColorDark else WarningColorLight,
-            Icons.Outlined.Block
-        )
-        else -> Triple(
-            if (isDark) InfoContainerDark else InfoContainerLight,
-            if (isDark) InfoColorDark else InfoColorLight,
-            Icons.Default.Warning
-        )
-    }
-
-    Surface(
-        color = bgColor,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.3f)),
-        modifier = modifier
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = status,
-                tint = textColor,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = status,
-                color = textColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
+/** Maps a log status to the tone and label used everywhere it appears. */
+fun statusTone(status: String): Tone = when (status) {
+    LogStatus.SUCCESS -> Tone.Success
+    LogStatus.FAILED -> Tone.Danger
+    LogStatus.PENDING, LogStatus.BATCHED -> Tone.Warning
+    else -> Tone.Neutral
 }
 
-@Composable
-fun DestinationBadge(destinationType: String, modifier: Modifier = Modifier) {
-    val (label, icon, color) = when (destinationType.uppercase()) {
-        "PHONE" -> Triple("SMS", Icons.Default.PhoneAndroid, MaterialTheme.colorScheme.primary)
-        "WEBHOOK" -> Triple("Webhook", Icons.Default.Http, MaterialTheme.colorScheme.secondary)
-        "EMAIL" -> Triple("Email", Icons.Default.Email, MaterialTheme.colorScheme.tertiary)
-        else -> Triple("None", Icons.Outlined.Block, MaterialTheme.colorScheme.outline)
-    }
-
-    Surface(
-        color = color.copy(alpha = 0.12f),
-        shape = RoundedCornerShape(8.dp),
-        modifier = modifier
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = color,
-                modifier = Modifier.size(13.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = label,
-                color = color,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
+fun statusLabel(status: String): String = when (status) {
+    LogStatus.SUCCESS -> "Delivered"
+    LogStatus.FAILED -> "Failed"
+    LogStatus.PENDING -> "Queued"
+    LogStatus.BATCHED -> "In digest"
+    LogStatus.SKIPPED -> "Skipped"
+    else -> status
 }
 
+private fun sourceIcon(source: String): ImageVector = when (source) {
+    MessageSource.NOTIFICATION -> Icons.Default.Notifications
+    MessageSource.CALL -> Icons.Default.PhoneMissed
+    MessageSource.MMS -> Icons.Default.Image
+    else -> Icons.Default.Sms
+}
+
+private fun statusIcon(status: String): ImageVector = when (status) {
+    LogStatus.SUCCESS -> Icons.Default.CheckCircle
+    LogStatus.FAILED -> Icons.Default.Error
+    LogStatus.PENDING -> Icons.Default.HourglassEmpty
+    else -> Icons.Default.RemoveCircle
+}
+
+fun formatTimestamp(timestamp: Long): String =
+    SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(timestamp))
+
+fun formatFullTimestamp(timestamp: Long): String =
+    SimpleDateFormat("EEEE d MMMM yyyy, HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+
+/** One row in the history list. */
 @Composable
 fun LogItemCard(
     log: SmsLogEntity,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val dateStr = SimpleDateFormat("MMM d, HH:mm:ss", Locale.getDefault())
-        .format(Date(log.receivedAt))
-
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = RoundedCornerShape(14.dp),
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .testTag("log_item_${log.id}")
+            .heightIn(min = Spacing.minTouchTarget)
+            .clickable(onClick = onClick),
+        shape = Shapes.cardCompact,
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = log.sender,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    DestinationBadge(destinationType = log.destinationType)
-                }
-                StatusBadge(status = log.status)
+        Column(modifier = Modifier.padding(Spacing.lg)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = sourceIcon(log.source),
+                    contentDescription = MessageSource.label(log.source),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                Text(
+                    text = log.sender,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                StatusPill(
+                    text = statusLabel(log.status),
+                    tone = statusTone(log.status),
+                    icon = statusIcon(log.status)
+                )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.size(Spacing.sm))
 
             Text(
                 text = log.body,
@@ -220,210 +135,84 @@ fun LogItemCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.size(Spacing.sm))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Target: ${log.destinationTarget}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = dateStr,
+                    text = formatTimestamp(log.receivedAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
+                if (log.destinationTarget.isNotBlank() && log.destinationTarget != "-") {
+                    Text(
+                        text = "  •  ${log.destinationTarget}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
 }
 
+/** Full detail of a single forwarding attempt, with retry and delete. */
 @Composable
 fun LogDetailDialog(
     log: SmsLogEntity,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
     onDelete: () -> Unit,
-    isRetrying: Boolean = false
+    isRetrying: Boolean
 ) {
-    val clipboardManager = LocalClipboardManager.current
-    val isDark = isSystemInDarkTheme()
-    val errorColor = if (isDark) ErrorColorDark else ErrorColorLight
-    val errorBg = if (isDark) ErrorContainerDark else ErrorContainerLight
-    val successColor = if (isDark) SuccessColorDark else SuccessColorLight
-    val successBg = if (isDark) SuccessContainerDark else SuccessContainerLight
-    val fullDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        .format(Date(log.receivedAt))
-
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = Shapes.dialog,
         title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Log Details",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                StatusBadge(status = log.status)
+            Column {
+                Text(text = log.sender, style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.size(Spacing.xs))
+                StatusPill(text = statusLabel(log.status), tone = statusTone(log.status))
             }
         },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "From:",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Text(
-                        text = log.sender,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                DetailRow("Received", formatFullTimestamp(log.receivedAt))
+                DetailRow("Source", MessageSource.label(log.source))
+                log.packageName?.let { DetailRow("App package", it) }
+                log.ruleName?.let { DetailRow("Rule", it) }
+                DetailRow("Destination", "${log.destinationType} → ${log.destinationTarget}")
+                if (log.simSlot > 0) DetailRow("SIM", "SIM ${log.simSlot}")
+                if (log.retryCount > 0) DetailRow("Attempts", (log.retryCount + 1).toString())
+                log.forwardedAt?.let { DetailRow("Delivered", formatFullTimestamp(it)) }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Time:",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Text(
-                        text = fullDate,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Destination:",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    DestinationBadge(destinationType = log.destinationType)
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "Target Address:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.outline
-                )
-                Text(
-                    text = log.destinationTarget,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = Spacing.md),
+                    color = MaterialTheme.colorScheme.outlineVariant
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
+                Text(text = "Message", style = MaterialTheme.typography.titleSmall)
+                Spacer(modifier = Modifier.size(Spacing.xs))
                 Text(
-                    text = "Message Content:",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.outline
+                    text = log.body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp)
-                ) {
-                    Text(
-                        text = log.body,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(10.dp)
-                    )
-                }
 
                 if (!log.errorMessage.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Error Details:",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = errorColor
+                    Spacer(modifier = Modifier.size(Spacing.md))
+                    InfoBanner(
+                        title = "What went wrong",
+                        message = log.errorMessage,
+                        tone = Tone.Danger,
+                        icon = Icons.Default.Error
                     )
-                    Surface(
-                        color = errorBg,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp)
-                    ) {
-                        Text(
-                            text = log.errorMessage,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = errorColor,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
                 }
-
                 if (!log.responsePayload.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.size(Spacing.md))
                     Text(
-                        text = "Server Response:",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = successColor
-                    )
-                    Surface(
-                        color = successBg,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp)
-                    ) {
-                        Text(
-                            text = log.responsePayload,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = successColor,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                }
-
-                if (log.retryCount > 0) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Retries attempted: ${log.retryCount}",
+                        text = log.responsePayload,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -431,46 +220,30 @@ fun LogDetailDialog(
             }
         },
         confirmButton = {
-            Row {
-                OutlinedButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString("${log.sender}: ${log.body}"))
-                    },
-                    modifier = Modifier.padding(end = 8.dp)
-                ) {
-                    Text("Copy")
-                }
-
-                if (log.destinationType != "NONE") {
-                    Button(
-                        onClick = onRetry,
-                        enabled = !isRetrying,
-                        modifier = Modifier.testTag("retry_log_button")
-                    ) {
-                        if (isRetrying) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Retry",
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        Text("Retry")
+            if (log.isBatched) {
+                TextButton(onClick = onDismiss) { Text("Close") }
+            } else if (log.isRetryable) {
+                Button(onClick = onRetry, enabled = !isRetrying, shape = Shapes.button) {
+                    if (isRetrying) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.size(Spacing.sm))
                     }
+                    Text("Send again")
                 }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Close") }
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDelete,
-                colors = ButtonDefaults.textButtonColors(contentColor = errorColor)
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
             ) {
                 Text("Delete")
             }
@@ -478,40 +251,55 @@ fun LogDetailDialog(
     )
 }
 
-/**
- * Ultra-crisp, high-contrast Material 3 Switch
- * Guaranteed unambiguous ON state with vivid emerald green track and white checkmarked thumb.
- */
 @Composable
-fun AppSwitch(
-    checked: Boolean,
-    onCheckedChange: ((Boolean) -> Unit)?,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    Switch(
-        checked = checked,
-        onCheckedChange = onCheckedChange,
-        enabled = enabled,
-        modifier = modifier,
-        thumbContent = if (checked) {
-            {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                    tint = Color(0xFF16A34A)
-                )
-            }
-        } else null,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = Color.White,
-            checkedTrackColor = Color(0xFF16A34A),
-            checkedBorderColor = Color(0xFF15803D),
-            uncheckedThumbColor = Color.White,
-            uncheckedTrackColor = MaterialTheme.colorScheme.outlineVariant,
-            uncheckedBorderColor = MaterialTheme.colorScheme.outline
+private fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.xs),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    )
+        Spacer(modifier = Modifier.size(Spacing.md))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+    }
 }
 
+/** Reusable destructive confirmation. */
+@Composable
+fun ConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = Shapes.dialog,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text(confirmLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}

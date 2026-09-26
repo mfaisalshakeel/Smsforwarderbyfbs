@@ -1,839 +1,558 @@
 package com.example.ui.screens
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.RestorePage
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SimCard
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.preferences.ForwarderSettings
-import com.example.ui.components.AppSwitch
-import com.example.ui.components.ConnectedGoogleAccountBadge
+import com.example.data.preferences.AuthMethod
+import com.example.data.preferences.ThemeMode
+import com.example.ui.components.AppCard
+import com.example.ui.components.BackgroundDiagnosticsCard
+import com.example.ui.components.ConnectedAccountCard
+import com.example.ui.components.ContentContainer
+import com.example.ui.components.FieldLabel
 import com.example.ui.components.GoogleSignInButton
+import com.example.ui.components.InfoBanner
+import com.example.ui.components.LoadingRow
 import com.example.ui.components.PenduCoderFooter
 import com.example.ui.components.PenduCoderPromoCard
-import com.example.ui.theme.ErrorColorDark
-import com.example.ui.theme.ErrorColorLight
-import com.example.ui.theme.ErrorContainerDark
-import com.example.ui.theme.ErrorContainerLight
-import com.example.ui.theme.SuccessColorDark
-import com.example.ui.theme.SuccessColorLight
-import com.example.ui.theme.SuccessContainerDark
-import com.example.ui.theme.SuccessContainerLight
-import com.example.ui.theme.WarningColorDark
-import com.example.ui.theme.WarningColorLight
-import com.example.ui.theme.WarningContainerDark
-import com.example.ui.theme.WarningContainerLight
+import com.example.ui.components.SectionHeader
+import com.example.ui.components.SettingNavRow
+import com.example.ui.components.SettingSwitchRow
+import com.example.ui.components.Tone
+import com.example.ui.theme.Shapes
+import com.example.ui.theme.Spacing
 import com.example.ui.viewmodel.MainViewModel
-import kotlinx.coroutines.launch
+import com.example.util.LockAvailability
+import com.example.util.PowerHelper
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
-    snackbarHostState: SnackbarHostState,
+    onOpenNotificationAccess: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
+    onExportBackup: (String) -> Unit,
+    onImportBackup: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val currentSettings by viewModel.settingsState.collectAsStateWithLifecycle()
+    val settings by viewModel.settingsState.collectAsStateWithLifecycle()
     val permissions by viewModel.permissionsState.collectAsStateWithLifecycle()
-    val isTesting by viewModel.isTestingAccount.collectAsStateWithLifecycle()
+    val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     val testResult by viewModel.accountTestResult.collectAsStateWithLifecycle()
-    val isDark = isSystemInDarkTheme()
+    val health by viewModel.backgroundHealth.collectAsStateWithLifecycle()
+    val engineState by viewModel.engineState.collectAsStateWithLifecycle()
+    val now by viewModel.clock.collectAsStateWithLifecycle()
+    val lockAvailability by viewModel.lockAvailability.collectAsStateWithLifecycle()
 
-    val successBg = if (isDark) SuccessContainerDark else SuccessContainerLight
-    val successText = if (isDark) SuccessColorDark else SuccessColorLight
-    val errorBg = if (isDark) ErrorContainerDark else ErrorContainerLight
-    val errorText = if (isDark) ErrorColorDark else ErrorColorLight
-    val warningBg = if (isDark) WarningContainerDark else WarningContainerLight
-    val warningText = if (isDark) WarningColorDark else WarningColorLight
-
-    var authMethod by remember(currentSettings) { mutableStateOf(currentSettings.authMethod) }
-    var senderEmail by remember(currentSettings) { mutableStateOf(currentSettings.senderEmailAccount) }
-    var appPassword by remember(currentSettings) { mutableStateOf(currentSettings.senderAppPassword) }
-    var displayName by remember(currentSettings) { mutableStateOf(currentSettings.senderDisplayName) }
-    var isPasswordVisible by remember { mutableStateOf(false) }
-
-    var isForwarderEnabled by remember(currentSettings) { mutableStateOf(currentSettings.isForwarderEnabled) }
-    var notifyOnForward by remember(currentSettings) { mutableStateOf(currentSettings.notifyOnForward) }
-    var dualSimEnabled by remember(currentSettings) { mutableStateOf(currentSettings.dualSimEnabled) }
-
-    var showAdvancedSmtp by remember { mutableStateOf(false) }
-    var smtpHost by remember(currentSettings) { mutableStateOf(currentSettings.smtpHost) }
-    var smtpPortText by remember(currentSettings) { mutableStateOf(currentSettings.smtpPort.toString()) }
-    var smtpUseTls by remember(currentSettings) { mutableStateOf(currentSettings.smtpUseTls) }
-
-    fun saveAll(customEmail: String? = null, customAuthMethod: String? = null) {
-        val emailToSave = (customEmail ?: senderEmail).trim()
-        val methodToSave = customAuthMethod ?: authMethod
-        val port = smtpPortText.toIntOrNull() ?: 587
-        val updated = currentSettings.copy(
-            isForwarderEnabled = isForwarderEnabled,
-            notifyOnForward = notifyOnForward,
-            authMethod = methodToSave,
-            senderEmailAccount = emailToSave,
-            senderAppPassword = appPassword.trim(),
-            senderDisplayName = displayName.trim(),
-            smtpHost = smtpHost.trim(),
-            smtpPort = port,
-            smtpUseTls = smtpUseTls,
-            dualSimEnabled = dualSimEnabled
-        )
-        viewModel.saveSettings(updated)
-        scope.launch {
-            snackbarHostState.showSnackbar("Settings saved successfully!")
-        }
+    var testRecipient by rememberSaveable { mutableStateOf("") }
+    // Deliberately `remember`, not `rememberSaveable`: the password must not be written into
+    // the saved-instance-state Bundle.
+    var appPassword by remember(settings.senderAppPassword) {
+        mutableStateOf(settings.senderAppPassword)
+    }
+    var smtpHost by rememberSaveable(settings.smtpHost) { mutableStateOf(settings.smtpHost) }
+    var smtpPort by rememberSaveable(settings.smtpPort) { mutableStateOf(settings.smtpPort.toString()) }
+    var displayName by rememberSaveable(settings.senderDisplayName) {
+        mutableStateOf(settings.senderDisplayName)
     }
 
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter
-    ) {
+    LaunchedEffect(settings.senderEmailAccount) {
+        if (testRecipient.isBlank()) testRecipient = settings.senderEmailAccount
+    }
+
+    ContentContainer(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 640.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .imePadding()
+                .padding(horizontal = Spacing.gutter),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
-            // Section 1: Google Account Link Card
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("google_account_card")
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = CircleShape,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.AccountCircle,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Sender Account",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Account used to send outgoing emails",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Status Badge
-                        val isConfigured = currentSettings.isSenderAccountConfigured
-                        Surface(
-                            color = if (isConfigured) successBg else warningBg,
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(0.5.dp, if (isConfigured) successText.copy(alpha = 0.4f) else warningText.copy(alpha = 0.4f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isConfigured) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = if (isConfigured) successText else warningText,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (isConfigured) "Active" else "Not Setup",
-                                    color = if (isConfigured) successText else warningText,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Setup Mode Selector (1-Click Google OAuth vs Manual App Password)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFF1F5F9),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Surface(
-                            onClick = {
-                                authMethod = "GOOGLE_OAUTH"
-                                saveAll(customAuthMethod = "GOOGLE_OAUTH")
-                            },
-                            shape = RoundedCornerShape(9.dp),
-                            color = if (authMethod == "GOOGLE_OAUTH") MaterialTheme.colorScheme.primary else Color.Transparent,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(vertical = 10.dp)
-                            ) {
-                                Text(
-                                    text = "⚡ 1-Click Google",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (authMethod == "GOOGLE_OAUTH") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Surface(
-                            onClick = {
-                                authMethod = "SMTP"
-                                saveAll(customAuthMethod = "SMTP")
-                            },
-                            shape = RoundedCornerShape(9.dp),
-                            color = if (authMethod == "SMTP") MaterialTheme.colorScheme.primary else Color.Transparent,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(vertical = 10.dp)
-                            ) {
-                                Text(
-                                    text = "⚙️ App Password",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (authMethod == "SMTP") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    if (authMethod == "GOOGLE_OAUTH") {
-                        // 1-Click Google OAuth Section
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    text = "⚡ Easy 1-2 Click Setup (No App Password)",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Tap 'Connect with Google', select your Gmail account and tap 'Allow'. Incoming SMS will be sent from this account automatically!",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // "Connect with Google" Button
-                        GoogleSignInButton(
-                            onAccountSelected = { pickedEmail ->
-                                senderEmail = pickedEmail
-                                authMethod = "GOOGLE_OAUTH"
-                                if (displayName.isBlank() || displayName == "SMS & Notification Forwarder") {
-                                    displayName = pickedEmail.substringBefore("@")
-                                }
-                                saveAll(customEmail = pickedEmail, customAuthMethod = "GOOGLE_OAUTH")
-                            },
-                            buttonText = if (senderEmail.isNotBlank()) "Change Connected Google Account" else "Connect with Google (1-Click)"
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        if (senderEmail.isNotBlank()) {
-                            ConnectedGoogleAccountBadge(
-                                email = senderEmail,
-                                hasAppPassword = false,
-                                authMethod = "GOOGLE_OAUTH",
-                                onChangeClick = {
-                                    senderEmail = ""
-                                    saveAll(customEmail = "")
-                                }
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-
-                        OutlinedTextField(
-                            value = displayName,
-                            onValueChange = { displayName = it },
-                            label = { Text("Sender Display Name") },
-                            placeholder = { Text("SMS & Notification Forwarder") },
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // 1-Click Test Button
-                        Button(
-                            onClick = {
-                                saveAll()
-                                viewModel.testSenderAccount(senderEmail)
-                            },
-                            enabled = !isTesting && senderEmail.isNotBlank(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("test_account_connection_button")
-                        ) {
-                            if (isTesting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Sending Test Email via Gmail API...")
-                            } else {
-                                Icon(imageVector = Icons.Default.Email, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Send 1-Click Test Email", fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                    } else {
-                        // Manual SMTP / App Password Section
-                        OutlinedTextField(
-                            value = senderEmail,
-                            onValueChange = { senderEmail = it },
-                            label = { Text("Google Account / Gmail Address") },
-                            placeholder = { Text("e.g. user@gmail.com") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                            leadingIcon = {
-                                Icon(imageVector = Icons.Default.Email, contentDescription = null)
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("sender_google_email_input")
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedTextField(
-                            value = appPassword,
-                            onValueChange = { appPassword = it },
-                            label = { Text("Google App Password (16 letters)") },
-                            placeholder = { Text("xxxx xxxx xxxx xxxx") },
-                            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            leadingIcon = {
-                                Icon(imageVector = Icons.Default.Security, contentDescription = null)
-                            },
-                            trailingIcon = {
-                                IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
-                                    Icon(
-                                        imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = "Toggle password"
-                                    )
-                                }
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("sender_app_password_input")
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedTextField(
-                            value = displayName,
-                            onValueChange = { displayName = it },
-                            label = { Text("Sender Display Name") },
-                            placeholder = { Text("SMS & Notification Forwarder") },
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Guide card on how to get App Password with 1-tap browser link
-                        Surface(
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.HelpOutline,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Google App Password Guide:",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "1. Enable 2-Step Verification in your Google Account\n" +
-                                        "2. Go to 'App passwords' in Google Security\n" +
-                                        "3. Create a password named 'SMS Forwarder' and paste the 16 letters above.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Button(
-                                    onClick = {
-                                        try {
-                                            val intent = Intent(
-                                                Intent.ACTION_VIEW,
-                                                Uri.parse("https://myaccount.google.com/apppasswords")
-                                            ).apply {
-                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (_: Exception) {}
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.OpenInNew,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Open Google App Passwords Page", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Test Connection Button
-                        OutlinedButton(
-                            onClick = {
-                                saveAll()
-                                viewModel.testSenderAccount(senderEmail)
-                            },
-                            enabled = !isTesting && senderEmail.isNotBlank() && appPassword.isNotBlank(),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("test_account_connection_button")
-                        ) {
-                            if (isTesting) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Sending Test Email...")
-                            } else {
-                                Text("Test SMTP Connection")
-                            }
-                        }
-                    }
-
-                    // Inline test result
-                    testResult?.let { result ->
-                        Spacer(modifier = Modifier.height(10.dp))
-                        val bannerBg = if (result.success) successBg else errorBg
-                        val bannerText = if (result.success) successText else errorText
-                        Surface(
-                            color = bannerBg,
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, bannerText.copy(alpha = 0.4f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = if (result.success) "Connection verified! Test email delivered to $senderEmail." else "Failed: ${result.errorMessage}",
-                                    color = bannerText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(onClick = { viewModel.clearAccountTestResult() }) {
-                                    Text("Dismiss", color = bannerText, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Section 2: Notification Access & Permissions
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Notification Forwarding Access",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "To allow forwarding of notifications from apps like WhatsApp, Telegram, or Banks, Android requires Notification Listener Access.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val hasAccess = permissions.hasNotificationAccess
-                        Text(
-                            text = if (hasAccess) "Access Granted" else "Access Not Granted",
-                            fontWeight = FontWeight.Bold,
-                            color = if (hasAccess) successText else warningText,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-
-                        OutlinedButton(
-                            onClick = {
-                                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                                context.startActivity(intent)
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("open_notification_access_button")
-                        ) {
-                            Text(if (hasAccess) "Open Settings" else "Grant Access")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-            }
-
-            // Section 3: Dual SIM & Engine Controls
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Forwarding Preferences",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Forwarding Engine",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Global master switch for forwarding",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        AppSwitch(
-                            checked = isForwarderEnabled,
-                            onCheckedChange = {
-                                isForwarderEnabled = it
-                                saveAll()
-                            },
-                            modifier = Modifier.testTag("settings_forwarder_switch")
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Dual SIM Support",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Identify SIM 1 and SIM 2 in forwarded messages",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        AppSwitch(
-                            checked = dualSimEnabled,
-                            onCheckedChange = {
-                                dualSimEnabled = it
-                                saveAll()
-                            },
-                            modifier = Modifier.testTag("dual_sim_switch")
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Forwarding Alerts",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Display notification when a message is forwarded",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        AppSwitch(
-                            checked = notifyOnForward,
-                            onCheckedChange = {
-                                notifyOnForward = it
-                                saveAll()
-                            },
-                            modifier = Modifier.testTag("notify_on_forward_switch")
-                        )
-                    }
-                }
-            }
-
-            // Section 4: Advanced SMTP (Accordion)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Custom SMTP Server",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "For Outlook, Yahoo, or private mail servers",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        TextButton(onClick = { showAdvancedSmtp = !showAdvancedSmtp }) {
-                            Text(if (showAdvancedSmtp) "Hide" else "Show")
-                        }
-                    }
-
-                    AnimatedVisibility(visible = showAdvancedSmtp) {
-                        Column(modifier = Modifier.padding(top = 12.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = smtpHost,
-                                    onValueChange = { smtpHost = it },
-                                    label = { Text("SMTP Host") },
-                                    modifier = Modifier.weight(2f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    singleLine = true
-                                )
-                                OutlinedTextField(
-                                    value = smtpPortText,
-                                    onValueChange = { smtpPortText = it },
-                                    label = { Text("Port") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    singleLine = true
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Use TLS Encryption", style = MaterialTheme.typography.bodyMedium)
-                                AppSwitch(
-                                    checked = smtpUseTls,
-                                    onCheckedChange = { smtpUseTls = it },
-                                    modifier = Modifier.testTag("smtp_tls_switch")
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Save All Button
-            Button(
-                onClick = { saveAll() },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("save_all_settings_button")
-            ) {
-                Icon(imageVector = Icons.Default.Save, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Save All Settings", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Developer Attribution & Promotion Section
-            PenduCoderPromoCard(
-                compact = false
+            // ---------------------------------------------------------- Sender account
+            SectionHeader(
+                title = "Sending account",
+                subtitle = "The mailbox your forwarded messages are sent from"
             )
 
-            PenduCoderFooter()
+            AppCard {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    FilterChip(
+                        selected = settings.authMethod == AuthMethod.GOOGLE_OAUTH,
+                        onClick = {
+                            viewModel.saveSettings(settings.copy(authMethod = AuthMethod.GOOGLE_OAUTH))
+                        },
+                        label = { Text("Google (recommended)") }
+                    )
+                    FilterChip(
+                        selected = settings.authMethod == AuthMethod.SMTP,
+                        onClick = { viewModel.saveSettings(settings.copy(authMethod = AuthMethod.SMTP)) },
+                        label = { Text("App password") }
+                    )
+                }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.size(Spacing.md))
+
+                if (settings.authMethod == AuthMethod.GOOGLE_OAUTH) {
+                    if (settings.senderEmailAccount.isBlank()) {
+                        GoogleSignInButton(
+                            onAccountSelected = { email ->
+                                viewModel.saveSettings(settings.copy(senderEmailAccount = email))
+                            }
+                        )
+                    } else {
+                        ConnectedAccountCard(
+                            email = settings.senderEmailAccount,
+                            onChangeAccount = {
+                                viewModel.saveSettings(settings.copy(senderEmailAccount = ""))
+                            }
+                        )
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = settings.senderEmailAccount,
+                        onValueChange = { viewModel.saveSettings(settings.copy(senderEmailAccount = it)) },
+                        label = { Text("Email address") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        singleLine = true,
+                        shape = Shapes.field,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.size(Spacing.sm))
+                    OutlinedTextField(
+                        value = appPassword,
+                        onValueChange = { appPassword = it },
+                        label = { Text("App password") },
+                        supportingText = {
+                            Text("Gmail needs a 16-character app password, not your normal password.")
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        singleLine = true,
+                        shape = Shapes.field,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("app_password_input")
+                    )
+                    Spacer(modifier = Modifier.size(Spacing.sm))
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        OutlinedTextField(
+                            value = smtpHost,
+                            onValueChange = { smtpHost = it },
+                            label = { Text("SMTP host") },
+                            singleLine = true,
+                            shape = Shapes.field,
+                            modifier = Modifier.weight(2f)
+                        )
+                        OutlinedTextField(
+                            value = smtpPort,
+                            onValueChange = { smtpPort = it.filter { ch -> ch.isDigit() }.take(5) },
+                            label = { Text("Port") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = Shapes.field,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(Spacing.sm))
+                    SettingSwitchRow(
+                        title = "Use STARTTLS",
+                        subtitle = "Leave on for port 587. Turn off for port 465.",
+                        checked = settings.smtpUseTls,
+                        onCheckedChange = { viewModel.saveSettings(settings.copy(smtpUseTls = it)) }
+                    )
+                    Spacer(modifier = Modifier.size(Spacing.sm))
+                    Button(
+                        onClick = {
+                            viewModel.saveSettings(
+                                settings.copy(
+                                    senderAppPassword = appPassword,
+                                    smtpHost = smtpHost.trim(),
+                                    smtpPort = smtpPort.toIntOrNull() ?: 587
+                                )
+                            )
+                        },
+                        shape = Shapes.button,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Save mail server details")
+                    }
+                }
+
+                Spacer(modifier = Modifier.size(Spacing.md))
+
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = { Text("Sender name") },
+                    supportingText = { Text("Shown as the \"From\" name on forwarded email") },
+                    singleLine = true,
+                    shape = Shapes.field,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                TextButton(
+                    onClick = { viewModel.saveSettings(settings.copy(senderDisplayName = displayName)) }
+                ) {
+                    Text("Save sender name")
+                }
+            }
+
+            // ---------------------------------------------------------- Test
+            AppCard {
+                FieldLabel(
+                    text = "Send a test message",
+                    helper = "Confirms the account really can send before you rely on it."
+                )
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                OutlinedTextField(
+                    value = testRecipient,
+                    onValueChange = { testRecipient = it },
+                    label = { Text("Send test to") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    singleLine = true,
+                    shape = Shapes.field,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                if (isBusy) {
+                    LoadingRow(text = "Sending…")
+                } else {
+                    Button(
+                        onClick = { viewModel.testSenderAccount(testRecipient) },
+                        enabled = settings.isSenderAccountConfigured,
+                        shape = Shapes.button,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("send_test_button")
+                    ) {
+                        Text("Send test message")
+                    }
+                }
+
+                testResult?.let { result ->
+                    Spacer(modifier = Modifier.size(Spacing.md))
+                    InfoBanner(
+                        title = if (result.success) "Test delivered" else "Test failed",
+                        message = result.errorMessage ?: result.responseDetails.orEmpty(),
+                        tone = if (result.success) Tone.Success else Tone.Danger,
+                        icon = if (result.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                        action = {
+                            TextButton(onClick = viewModel::clearAccountTestResult) { Text("Dismiss") }
+                        }
+                    )
+                }
+            }
+
+            // ---------------------------------------------------------- Reliability
+            SectionHeader(
+                title = "Reliability",
+                subtitle = "Keep the app running so messages are never missed"
+            )
+
+            BackgroundDiagnosticsCard(
+                health = health,
+                now = now,
+                serviceRunning = engineState.serviceRunning,
+                lastStopReason = engineState.lastStopReason
+            )
+
+            if (PowerHelper.manufacturerNeedsAutostart()) {
+                InfoBanner(
+                    title = "This phone needs autostart enabled",
+                    message = PowerHelper.autostartInstructions(),
+                    tone = Tone.Warning,
+                    icon = Icons.Default.BatteryAlert
+                )
+            }
+
+            AppCard {
+                SettingSwitchRow(
+                    title = "Keep running in the background",
+                    subtitle = "Shows a quiet notification so Android does not shut the app down",
+                    checked = settings.keepServiceAlive,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(keepServiceAlive = it)) }
+                )
+                if (permissions.isBatteryOptimised) {
+                    Spacer(modifier = Modifier.size(Spacing.sm))
+                    InfoBanner(
+                        title = "Battery optimisation is on",
+                        message = "Android may freeze the app and you will miss messages. " +
+                            "Allow unrestricted battery use to prevent this.",
+                        tone = Tone.Warning,
+                        icon = Icons.Default.BatteryAlert,
+                        action = {
+                            Button(onClick = onOpenBatterySettings, shape = Shapes.button) {
+                                Text("Fix this")
+                            }
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                SettingSwitchRow(
+                    title = "Retry only on Wi-Fi",
+                    subtitle = "Queued messages wait for Wi-Fi instead of using mobile data",
+                    checked = settings.retryOnlyOnWifi,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(retryOnlyOnWifi = it)) }
+                )
+                SettingSwitchRow(
+                    title = "Notify me when a message is forwarded",
+                    checked = settings.notifyOnForward,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(notifyOnForward = it)) }
+                )
+            }
+
+            // ---------------------------------------------------------- Notifications capture
+            SectionHeader(
+                title = "Notification capture",
+                subtitle = "Controls which app notifications are eligible for forwarding"
+            )
+
+            AppCard {
+                SettingNavRow(
+                    title = "Notification access",
+                    subtitle = if (permissions.hasNotificationAccess) {
+                        "Granted"
+                    } else {
+                        "Required to forward app notifications"
+                    },
+                    leadingIcon = Icons.Default.NotificationsActive,
+                    trailingText = if (permissions.hasNotificationAccess) null else "Grant",
+                    onClick = onOpenNotificationAccess
+                )
+                SettingSwitchRow(
+                    title = "Ignore ongoing notifications",
+                    subtitle = "Skips music players, downloads and navigation",
+                    checked = settings.skipOngoingNotifications,
+                    onCheckedChange = {
+                        viewModel.saveSettings(settings.copy(skipOngoingNotifications = it))
+                    }
+                )
+                SettingSwitchRow(
+                    title = "Ignore grouped summaries",
+                    subtitle = "Skips the \"3 new messages\" header above a bundle",
+                    checked = settings.skipGroupSummaries,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(skipGroupSummaries = it)) }
+                )
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                FieldLabel(
+                    text = "Ignore repeats within",
+                    helper = "Stops the same notification being forwarded again and again."
+                )
+                Spacer(modifier = Modifier.size(Spacing.xs))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    listOf(0 to "Off", 30 to "30s", 60 to "1 min", 300 to "5 min").forEach { (value, label) ->
+                        FilterChip(
+                            selected = settings.duplicateWindowSeconds == value,
+                            onClick = {
+                                viewModel.saveSettings(settings.copy(duplicateWindowSeconds = value))
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+
+            // ---------------------------------------------------------- Quiet hours
+            SectionHeader(title = "Quiet hours")
+            AppCard {
+                SettingSwitchRow(
+                    title = "Pause forwarding at night",
+                    subtitle = if (settings.quietHoursEnabled) {
+                        "Paused from ${formatMinute(settings.quietHoursStartMinute)} " +
+                            "to ${formatMinute(settings.quietHoursEndMinute)}"
+                    } else {
+                        "Applies to every rule that has no schedule of its own"
+                    },
+                    checked = settings.quietHoursEnabled,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(quietHoursEnabled = it)) }
+                )
+            }
+
+            // ---------------------------------------------------------- Appearance
+            SectionHeader(title = "Appearance")
+            AppCard {
+                FieldLabel(text = "Theme")
+                Spacer(modifier = Modifier.size(Spacing.xs))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    listOf(
+                        ThemeMode.SYSTEM to "System",
+                        ThemeMode.LIGHT to "Light",
+                        ThemeMode.DARK to "Dark"
+                    ).forEach { (mode, label) ->
+                        FilterChip(
+                            selected = settings.themeMode == mode,
+                            onClick = { viewModel.saveSettings(settings.copy(themeMode = mode)) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                SettingSwitchRow(
+                    title = "Use my wallpaper colours",
+                    subtitle = "Material You, on Android 12 and newer",
+                    checked = settings.dynamicColorEnabled,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(dynamicColorEnabled = it)) }
+                )
+                SettingSwitchRow(
+                    title = "Add developer credit to messages",
+                    subtitle = "Appends a short line at the end of each forwarded message",
+                    checked = settings.includeBrandingFooter,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(includeBrandingFooter = it)) }
+                )
+            }
+
+            // ---------------------------------------------------------- History
+            SectionHeader(title = "History")
+            AppCard {
+                FieldLabel(
+                    text = "Keep history for",
+                    helper = "Older entries are removed automatically."
+                )
+                Spacer(modifier = Modifier.size(Spacing.xs))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    listOf(
+                        7 to "7 days",
+                        30 to "30 days",
+                        90 to "90 days",
+                        365 to "1 year",
+                        0 to "Forever"
+                    ).forEach { (days, label) ->
+                        FilterChip(
+                            selected = settings.logRetentionDays == days,
+                            onClick = { viewModel.saveSettings(settings.copy(logRetentionDays = days)) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+
+            // ---------------------------------------------------------- Backup
+            SectionHeader(
+                title = "Backup",
+                subtitle = "Move your rules to another phone"
+            )
+            AppCard {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    OutlinedButton(
+                        onClick = { viewModel.buildBackupJson(onExportBackup) },
+                        enabled = !isBusy,
+                        shape = Shapes.button,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.size(Spacing.xs))
+                        Text("Export")
+                    }
+                    OutlinedButton(
+                        onClick = onImportBackup,
+                        enabled = !isBusy,
+                        shape = Shapes.button,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.RestorePage, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.size(Spacing.xs))
+                        Text("Import")
+                    }
+                }
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                Text(
+                    text = "Passwords and bot tokens are never written to the backup file.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // ---------------------------------------------------------- Privacy
+            SectionHeader(title = "Privacy")
+
+            AppCard {
+                SettingSwitchRow(
+                    title = "Lock the app",
+                    subtitle = when (lockAvailability) {
+                        LockAvailability.AVAILABLE ->
+                            "Ask for your fingerprint, face or PIN before showing your messages"
+                        LockAvailability.NOT_ENROLLED ->
+                            "Set a screen lock or fingerprint on this phone first"
+                        LockAvailability.UNSUPPORTED ->
+                            "This phone has no screen lock, so the app cannot be locked"
+                    },
+                    checked = settings.appLockEnabled,
+                    onCheckedChange = { viewModel.saveSettings(settings.copy(appLockEnabled = it)) },
+                    enabled = lockAvailability == LockAvailability.AVAILABLE
+                )
+            }
+
+            AppCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Security,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.size(Spacing.md))
+                    Text(
+                        text = "Everything stays on this device",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                }
+                Spacer(modifier = Modifier.size(Spacing.sm))
+                Text(
+                    text = "Messages are read on your phone and sent straight to the destinations " +
+                        "you configure. Nothing is uploaded to the developer, there is no analytics " +
+                        "and no account. Your mail password is encrypted with a key held in this " +
+                        "device's hardware keystore, and is excluded from cloud backup.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.size(Spacing.sm))
+            PenduCoderPromoCard(compact = true)
+            PenduCoderFooter()
+            Spacer(modifier = Modifier.size(Spacing.xxl))
         }
     }
 }
