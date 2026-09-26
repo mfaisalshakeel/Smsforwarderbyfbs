@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -62,7 +63,8 @@ import com.google.android.gms.common.api.Scope
 fun GoogleSignInButton(
     onAccountSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
-    buttonText: String = "Connect Google account"
+    buttonText: String = "Connect Google account",
+    isConnecting: Boolean = false
 ) {
     val context = LocalContext.current
     var showAccountChooser by remember { mutableStateOf(false) }
@@ -109,6 +111,7 @@ fun GoogleSignInButton(
 
     Column(modifier = modifier.fillMaxWidth()) {
         Button(
+            enabled = !isConnecting,
             onClick = {
                 errorText = null
                 runCatching { signInLauncher.launch(signInClient.signInIntent) }
@@ -137,14 +140,24 @@ fun GoogleSignInButton(
                 .heightIn(min = 52.dp)
                 .testTag("continue_with_google_button")
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_google_logo),
-                contentDescription = null,
-                tint = Color.Unspecified,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.size(Spacing.md))
-            Text(text = buttonText, style = MaterialTheme.typography.labelLarge)
+            if (isConnecting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.size(Spacing.md))
+                Text(text = "Checking with Google…", style = MaterialTheme.typography.labelLarge)
+            } else {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_google_logo),
+                    contentDescription = null,
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.size(Spacing.md))
+                Text(text = buttonText, style = MaterialTheme.typography.labelLarge)
+            }
         }
 
         errorText?.let {

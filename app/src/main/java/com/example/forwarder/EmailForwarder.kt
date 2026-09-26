@@ -45,6 +45,10 @@ class EmailForwarder {
         timestamp = timestamp
     )
 
+    /** Checks the connected Google account can obtain a send token, without sending anything. */
+    suspend fun verifyGoogleAccess(context: android.content.Context, email: String): ForwardResult =
+        gmailApiForwarder.verifyAccess(context, email)
+
     suspend fun sendEmail(
         host: String,
         port: Int,

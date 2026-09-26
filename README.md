@@ -72,6 +72,17 @@ service/NotificationF… ───┘            │                        Gmai
 
 ---
 
+## Sending accounts
+
+Two ways to send mail:
+
+* **App password** — works out of the box. The user creates a 16-character app password in
+  their Google account and pastes it in. Mail comes from their own mailbox.
+* **One-tap Google** — needs the app registered in Google Cloud first, and `gmail.send` is a
+  restricted scope requiring verification before public release. See
+  [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md). Until that is done the app says so on the Setup screen
+  and points the user at App password.
+
 ## Security and privacy
 
 * Nothing is uploaded to the developer. There is no account, no analytics, no telemetry.

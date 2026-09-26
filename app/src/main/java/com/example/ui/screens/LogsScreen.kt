@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +62,7 @@ fun LogsScreen(
     val status by viewModel.filterStatus.collectAsStateWithLifecycle()
     val source by viewModel.filterSource.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
+    val isTransferring by viewModel.isTransferring.collectAsStateWithLifecycle()
 
     var selectedLog by remember { mutableStateOf<SmsLogEntity?>(null) }
     var confirmClear by rememberSaveable { mutableStateOf(false) }
@@ -130,9 +132,16 @@ fun LogsScreen(
                     }
                     IconButton(
                         onClick = { viewModel.buildLogsCsv(onExportCsv) },
-                        enabled = !isBusy && logs.isNotEmpty()
+                        enabled = !isTransferring && logs.isNotEmpty()
                     ) {
-                        Icon(Icons.Default.Download, contentDescription = "Export history as CSV")
+                        if (isTransferring) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Download, contentDescription = "Export history as CSV")
+                        }
                     }
                     IconButton(onClick = { confirmClear = true }, enabled = logs.isNotEmpty()) {
                         Icon(

@@ -121,6 +121,35 @@ class GmailApiForwarder {
         }
     }
 
+    /**
+     * Checks the account can actually obtain a `gmail.send` token, without sending a message.
+     *
+     * Run right after connecting an account so a missing OAuth client is reported there and
+     * then, instead of silently failing later on the first real message.
+     */
+    suspend fun verifyAccess(context: Context, senderEmail: String): ForwardResult =
+        withContext(Dispatchers.IO) {
+            if (senderEmail.isBlank()) {
+                return@withContext ForwardResult(
+                    success = false,
+                    errorMessage = "No Google account selected."
+                )
+            }
+            val result = getAccessToken(context, senderEmail)
+            if (result.token != null) {
+                ForwardResult(
+                    success = true,
+                    responseDetails = "Google authorised $senderEmail to send mail."
+                )
+            } else {
+                ForwardResult(
+                    success = false,
+                    errorMessage = result.errorMessage,
+                    isRetryable = result.isRetryable
+                )
+            }
+        }
+
     private data class TokenResult(
         val token: String? = null,
         val errorMessage: String = "",
@@ -140,7 +169,7 @@ class GmailApiForwarder {
         )
     } catch (e: GoogleAuthException) {
         Log.e(TAG, "Google auth failed", e)
-        TokenResult(errorMessage = "Google sign-in error: ${e.localizedMessage ?: e.javaClass.simpleName}")
+        TokenResult(errorMessage = explainAuthFailure(e.message.orEmpty()))
     } catch (e: IOException) {
         TokenResult(
             errorMessage = "Could not reach Google to refresh the sign-in token.",
@@ -148,6 +177,40 @@ class GmailApiForwarder {
         )
     } catch (e: Exception) {
         Log.e(TAG, "Unable to obtain Google token", e)
-        TokenResult(errorMessage = "Could not get a Google token for $email: ${e.localizedMessage}")
+        TokenResult(errorMessage = explainAuthFailure(e.message.orEmpty()))
+    }
+
+    /**
+     * Turns Google's opaque auth codes into something actionable.
+     *
+     * Sending through the Gmail API needs an OAuth client registered in Google Cloud for this
+     * exact package name and signing certificate. Without one, Play Services refuses the token
+     * and the only clue is a bare code like UNREGISTERED_ON_API_CONSOLE.
+     */
+    private fun explainAuthFailure(raw: String): String = when {
+        raw.contains("UNREGISTERED_ON_API_CONSOLE", ignoreCase = true) ||
+            raw.contains("INVALID_AUDIENCE", ignoreCase = true) ||
+            raw.contains("INVALID_CLIENT", ignoreCase = true) ->
+            "This app is not registered with Google for sending mail. An OAuth client for its " +
+                "package name and signing certificate has to be created in Google Cloud first " +
+                "(see GOOGLE_SETUP.md). Use the App password method instead for now."
+
+        raw.contains("INVALID_SCOPE", ignoreCase = true) ->
+            "The Gmail API is not enabled on the Google Cloud project behind this app, or " +
+                "gmail.send is not listed on its consent screen."
+
+        raw.contains("ServiceDisabled", ignoreCase = true) ||
+            raw.contains("AccountNotPresent", ignoreCase = true) ->
+            "Google has disabled API access for this account. Try another account, or use the " +
+                "App password method."
+
+        raw.contains("NetworkError", ignoreCase = true) ->
+            "Could not reach Google to sign in. Check the connection and try again."
+
+        raw.isBlank() -> "Google refused the sign-in without giving a reason. If this app has " +
+            "not been registered in Google Cloud yet, use the App password method."
+
+        else -> "Google refused the sign-in ($raw). If it mentions the app being unregistered, " +
+            "see GOOGLE_SETUP.md, or use the App password method instead."
     }
 }

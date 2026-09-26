@@ -79,6 +79,8 @@ fun SettingsScreen(
     val settings by viewModel.settingsState.collectAsStateWithLifecycle()
     val permissions by viewModel.permissionsState.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
+    val isConnectingAccount by viewModel.isConnectingAccount.collectAsStateWithLifecycle()
+    val isTransferring by viewModel.isTransferring.collectAsStateWithLifecycle()
     val testResult by viewModel.accountTestResult.collectAsStateWithLifecycle()
     val health by viewModel.backgroundHealth.collectAsStateWithLifecycle()
     val engineState by viewModel.engineState.collectAsStateWithLifecycle()
@@ -135,19 +137,37 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.size(Spacing.md))
 
                 if (settings.authMethod == AuthMethod.GOOGLE_OAUTH) {
+                    InfoBanner(
+                        title = "Needs Google Cloud setup",
+                        message = "One-tap Google sending only works once this app has an OAuth " +
+                            "client registered in Google Cloud for its package name and signing " +
+                            "certificate. Until that is done, use App password — it works right " +
+                            "now and sends through the same mailbox.",
+                        tone = Tone.Info,
+                        action = {
+                            TextButton(
+                                onClick = { viewModel.saveSettings(settings.copy(authMethod = AuthMethod.SMTP)) }
+                            ) {
+                                Text("Switch to App password")
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.size(Spacing.md))
+
                     if (settings.senderEmailAccount.isBlank()) {
                         GoogleSignInButton(
-                            onAccountSelected = { email ->
-                                viewModel.saveSettings(settings.copy(senderEmailAccount = email))
-                            }
+                            isConnecting = isConnectingAccount,
+                            onAccountSelected = viewModel::connectGoogleAccount
                         )
                     } else {
                         ConnectedAccountCard(
                             email = settings.senderEmailAccount,
-                            onChangeAccount = {
-                                viewModel.saveSettings(settings.copy(senderEmailAccount = ""))
-                            }
+                            onChangeAccount = viewModel::disconnectGoogleAccount
                         )
+                        if (isConnectingAccount) {
+                            Spacer(modifier = Modifier.size(Spacing.sm))
+                            LoadingRow(text = "Checking with Google…")
+                        }
                     }
                 } else {
                     OutlinedTextField(
@@ -477,7 +497,7 @@ fun SettingsScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     OutlinedButton(
                         onClick = { viewModel.buildBackupJson(onExportBackup) },
-                        enabled = !isBusy,
+                        enabled = !isTransferring,
                         shape = Shapes.button,
                         modifier = Modifier.weight(1f)
                     ) {
@@ -487,7 +507,7 @@ fun SettingsScreen(
                     }
                     OutlinedButton(
                         onClick = onImportBackup,
-                        enabled = !isBusy,
+                        enabled = !isTransferring,
                         shape = Shapes.button,
                         modifier = Modifier.weight(1f)
                     ) {
@@ -495,6 +515,10 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.size(Spacing.xs))
                         Text("Import")
                     }
+                }
+                if (isTransferring) {
+                    Spacer(modifier = Modifier.size(Spacing.md))
+                    LoadingRow(text = "Working…")
                 }
                 Spacer(modifier = Modifier.size(Spacing.sm))
                 Text(

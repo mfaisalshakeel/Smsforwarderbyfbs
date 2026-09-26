@@ -211,6 +211,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
 
+    /** Connecting and verifying a Google account. */
+    private val _isConnectingAccount = MutableStateFlow(false)
+    val isConnectingAccount: StateFlow<Boolean> = _isConnectingAccount.asStateFlow()
+
+    /** Id of the rule whose test message is in flight, so only that card shows a spinner. */
+    private val _testingRuleId = MutableStateFlow<Long?>(null)
+    val testingRuleId: StateFlow<Long?> = _testingRuleId.asStateFlow()
+
+    /** Export, import or CSV generation in progress. */
+    private val _isTransferring = MutableStateFlow(false)
+    val isTransferring: StateFlow<Boolean> = _isTransferring.asStateFlow()
+
     private val _message = MutableStateFlow<UiMessage?>(null)
     val message: StateFlow<UiMessage?> = _message.asStateFlow()
 
@@ -314,15 +326,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun testRule(rule: ForwardingRuleEntity) {
         viewModelScope.launch {
-            _isBusy.value = true
+            _testingRuleId.value = rule.id
             val result = forwardingManager.testRule(rule)
-            _isBusy.value = false
+            _testingRuleId.value = null
             _message.value = if (result.success) {
                 UiMessage("Test sent to ${rule.targets.firstOrNull().orEmpty()}")
             } else {
                 UiMessage(result.errorMessage ?: "Test failed", isError = true)
             }
         }
+    }
+
+    /**
+     * Saves the chosen Google account and immediately checks Google will actually authorise it.
+     * Reporting the failure here is the difference between "it did nothing" and a message
+     * naming the cause.
+     */
+    fun connectGoogleAccount(email: String) {
+        viewModelScope.launch {
+            _isConnectingAccount.value = true
+            settingsRepo.updateSettings(settingsRepo.getSettings().copy(senderEmailAccount = email))
+
+            val result = forwardingManager.verifyGoogleAccount(email)
+            _isConnectingAccount.value = false
+
+            if (result.success) {
+                _message.value = UiMessage("Connected $email")
+            } else {
+                // Keep the account selected so the consent prompt can still be retried, but
+                // surface the reason in the same place the test result appears.
+                _accountTestResult.value = result
+                _message.value = UiMessage("Google could not authorise this account", isError = true)
+            }
+        }
+    }
+
+    fun disconnectGoogleAccount() {
+        settingsRepo.updateSettings(settingsRepo.getSettings().copy(senderEmailAccount = ""))
+        _accountTestResult.value = null
     }
 
     // ---- Account test -------------------------------------------------------
@@ -448,25 +489,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun buildBackupJson(onReady: (String) -> Unit) {
         viewModelScope.launch {
-            _isBusy.value = true
+            _isTransferring.value = true
             val json = BackupManager.exportToJson(ruleRepo.getAllForExport(), settingsRepo.getSettings())
-            _isBusy.value = false
+            _isTransferring.value = false
             onReady(json)
         }
     }
 
     fun buildLogsCsv(onReady: (String) -> Unit) {
         viewModelScope.launch {
-            _isBusy.value = true
+            _isTransferring.value = true
             val csv = BackupManager.exportLogsToCsv(smsLogRepo.getAllForExport())
-            _isBusy.value = false
+            _isTransferring.value = false
             onReady(csv)
         }
     }
 
     fun restoreBackup(json: String) {
         viewModelScope.launch {
-            _isBusy.value = true
+            _isTransferring.value = true
             val result = BackupManager.importFromJson(json, settingsRepo.getSettings())
             if (result.error != null) {
                 _message.value = UiMessage(result.error, isError = true)
@@ -475,7 +516,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 result.settings?.let { settingsRepo.updateSettings(it) }
                 _message.value = UiMessage("Restored ${result.rules.size} rule(s)")
             }
-            _isBusy.value = false
+            _isTransferring.value = false
         }
     }
 

@@ -562,6 +562,13 @@ class ForwardingManager(
         )
     }
 
+    /**
+     * Confirms a just-connected Google account really can send, so a missing OAuth client is
+     * reported at connect time rather than silently on the first real message.
+     */
+    suspend fun verifyGoogleAccount(email: String): ForwardResult =
+        emailForwarder.verifyGoogleAccess(context, email)
+
     /** "Send test" from the rule editor, so a rule can be verified before it is saved. */
     suspend fun testRule(rule: ForwardingRuleEntity): ForwardResult = withContext(Dispatchers.IO) {
         val settings = settingsRepository.getSettings()

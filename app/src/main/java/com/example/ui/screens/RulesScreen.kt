@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +63,7 @@ fun RulesScreen(
     val rules by viewModel.rulesState.collectAsStateWithLifecycle()
     val settings by viewModel.settingsState.collectAsStateWithLifecycle()
     val availableSims by viewModel.availableSims.collectAsStateWithLifecycle()
+    val testingRuleId by viewModel.testingRuleId.collectAsStateWithLifecycle()
 
     var editingRule by remember { mutableStateOf<ForwardingRuleEntity?>(null) }
     var isCreating by remember { mutableStateOf(false) }
@@ -106,6 +108,7 @@ fun RulesScreen(
                     items(rules, key = { it.id }) { rule ->
                         RuleCard(
                             rule = rule,
+                            isTesting = testingRuleId == rule.id,
                             onToggle = { enabled -> viewModel.toggleRule(rule.id, enabled) },
                             onEdit = { editingRule = rule },
                             onDelete = { rulePendingDeletion = rule },
@@ -162,6 +165,7 @@ fun RulesScreen(
 @Composable
 private fun RuleCard(
     rule: ForwardingRuleEntity,
+    isTesting: Boolean,
     onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -224,8 +228,15 @@ private fun RuleCard(
         Spacer(modifier = Modifier.size(Spacing.sm))
 
         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-            IconButton(onClick = onTest) {
-                Icon(Icons.Default.Send, contentDescription = "Send a test message")
+            IconButton(onClick = onTest, enabled = !isTesting) {
+                if (isTesting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Send, contentDescription = "Send a test message")
+                }
             }
             IconButton(onClick = onEdit) {
                 Icon(Icons.Default.Edit, contentDescription = "Edit this rule")
